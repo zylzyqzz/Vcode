@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Vcode
+Comment=Vcode — a Wails shell around the Go kernel
+Exec=vcode-desktop
+Icon=vcode-desktop
+Categories=Development;Utility;
+Terminal=false
+StartupWMClass=vcode-desktop
