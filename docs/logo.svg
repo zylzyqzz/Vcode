@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="170" viewBox="0 0 760 170" role="img" aria-label="Vcode — DeepSeek-native agent framework">
+  <title>Vcode</title>
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect x="15" y="15" width="140" height="140" rx="30" fill="url(#g)"/>
+  <path fill="#fff" d="M50,50 h20 l35,55 l35,-55 h20 l-55,85 z"/>
+  <text x="185" y="108" font-family="ui-monospace, monospace" font-size="72" font-weight="800" fill="url(#g)" letter-spacing="4">VCODE</text>
+  <text x="188" y="142" font-family="ui-monospace, monospace" font-size="15" fill="#64748b" letter-spacing="0.5">DeepSeek-native agent framework  ·  cache-first loop</text>
+</svg>
