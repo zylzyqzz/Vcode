@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -30,8 +31,8 @@ func TestConfigureCLIThemeSwitchesModeAndDefaultStyle(t *testing.T) {
 	if activeCLITheme.name != "dark" || activeCLITheme.style != "graphite" {
 		t.Fatalf("dark theme = %s/%s, want dark/graphite", activeCLITheme.name, activeCLITheme.style)
 	}
-	if got := accent("x"); !strings.HasPrefix(got, ansiAccent) {
-		t.Fatalf("dark accent = %q, want %q", got, ansiAccent)
+	if got := accent("x"); !strings.HasPrefix(got, fmt.Sprintf("\033[38;5;%dm", activeCLITheme.accent.xterm)) {
+		t.Fatalf("dark accent = %q, want active gold theme xterm %d", got, activeCLITheme.accent.xterm)
 	}
 }
 

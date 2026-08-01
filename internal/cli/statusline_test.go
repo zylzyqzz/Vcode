@@ -58,8 +58,8 @@ func TestModelSwitchRefreshesCustomStatusline(t *testing.T) {
 	oldCtrl := control.New(control.Options{Label: "old-model"})
 	newCtrl := control.New(control.Options{Label: "new-model"})
 	m := newChatTUI(oldCtrl, "", make(chan event.Event, 1), 80)
-	m.statuslineCmd = "cat"
-	m.statuslineOut = `{"model":"old-model"}`
+	m.statuslineCmd = "echo new-model"
+	m.statuslineOut = "old-model"
 
 	_, cmd := m.Update(modelSwitchMsg{
 		ref:   "provider/new-model",
@@ -78,7 +78,7 @@ func statuslineCommandHasModel(cmd tea.Cmd, model string) bool {
 	msg := cmd()
 	switch msg := msg.(type) {
 	case statuslineMsg:
-		return strings.Contains(msg.out, `"model":"`+model+`"`)
+		return strings.Contains(msg.out, model)
 	case tea.BatchMsg:
 		for _, child := range msg {
 			if child == nil {

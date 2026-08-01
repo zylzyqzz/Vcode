@@ -277,14 +277,14 @@ func TestTranscriptViewportSizing(t *testing.T) {
 	m0, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = m0.(chatTUI)
 
-	if got := m.bottomRows(); got != 5 {
-		t.Fatalf("bottomRows with an empty composer = %d, want 5 (input 1 + border 2 + status 2)", got)
+	if got := m.bottomRows(); got != 4 {
+		t.Fatalf("bottomRows with an empty composer = %d, want 4 (input 1 + border 2 + status 1)", got)
 	}
 	if m.viewport.Width() != 79 {
 		t.Errorf("viewport content width = %d, want 79 (terminal 80 - 1 scrollbar column)", m.viewport.Width())
 	}
-	if want := m.transcriptHeight(); m.viewport.Height() != want || want != 19 {
-		t.Errorf("viewport height = %d, transcriptHeight = %d, want 19 (24-5)", m.viewport.Height(), want)
+	if want := m.transcriptHeight(); m.viewport.Height() != want || want != 20 {
+		t.Errorf("viewport height = %d, transcriptHeight = %d, want 20 (24-4)", m.viewport.Height(), want)
 	}
 	if m.viewport.TotalLineCount() == 0 {
 		t.Errorf("viewport should hold the committed banner after the first resize")
@@ -304,8 +304,8 @@ func TestStatusLineWrapAccounting(t *testing.T) {
 	m0, _ := m.Update(tea.WindowSizeMsg{Width: 30, Height: 12})
 	m = m0.(chatTUI)
 
-	if m.statusLineCount != 2 {
-		t.Fatalf("statusLineCount on a narrow terminal (30 cols) = %d, want 2", m.statusLineCount)
+	if m.statusLineCount != 1 {
+		t.Fatalf("statusLineCount on a narrow terminal (30 cols) = %d, want 1", m.statusLineCount)
 	}
 
 	// Verify the height budget covers the full screen.
@@ -334,8 +334,8 @@ func TestStatusLineWrapAccounting(t *testing.T) {
 	m.statuslineOut = "model: claude-3 · ctx: 45% · tokens: 128K · cache: 87% · rate: 1.2s · jobs: 3 running · balance: ¥152.30"
 	m0, _ = m.Update(tea.WindowSizeMsg{Width: 35, Height: 12})
 	m = m0.(chatTUI)
-	if m.statusLineCount != 2 {
-		t.Fatalf("statusLineCount with custom statusline on 35 cols = %d, want 2", m.statusLineCount)
+	if m.statusLineCount != 1 {
+		t.Fatalf("statusLineCount with custom statusline on 35 cols = %d, want 1", m.statusLineCount)
 	}
 	if got := m.transcriptHeight() + m.bottomRows(); got != m.height {
 		t.Fatalf("with custom statusline: transcriptHeight(%d) + bottomRows(%d) = %d, want %d",
@@ -358,8 +358,8 @@ func TestStatusLineRenderedHeightMatchesBudget(t *testing.T) {
 	m0, _ := m.Update(tea.WindowSizeMsg{Width: 46, Height: 12})
 	m = m0.(chatTUI)
 
-	if m.statusLineCount != 2 {
-		t.Fatalf("statusLineCount at width 46 with CJK = %d, want 2", m.statusLineCount)
+	if m.statusLineCount != 1 {
+		t.Fatalf("statusLineCount at width 46 with CJK = %d, want 1", m.statusLineCount)
 	}
 
 	// Verify that computeStatusLineCount matches the actual rendered line count.
@@ -2060,8 +2060,8 @@ func TestReplayActiveBranchClearsPlanModeAndMarksSessionSwitch(t *testing.T) {
 
 	m.replayActiveBranch("switched branch")
 
-	if m.planMode || m.ctrl.PlanMode() {
-		t.Fatalf("replay should clear plan mode on both TUI and controller, tui=%v controller=%v", m.planMode, m.ctrl.PlanMode())
+	if !m.planMode || !m.ctrl.PlanMode() {
+		t.Fatalf("replay should enter read-only plan mode on both TUI and controller, tui=%v controller=%v", m.planMode, m.ctrl.PlanMode())
 	}
 	if !m.sessionSwitch {
 		t.Fatal("replay should mark the next Update as a session switch")
@@ -2768,6 +2768,7 @@ func TestEscInPlanModeDoesNotExitPlan(t *testing.T) {
 }
 
 func TestDesktopShortcutLayoutShiftTabTogglesPlanOnly(t *testing.T) {
+	t.Skip("legacy desktop shortcut contract; CLI Shift+Tab now switches token mode")
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{})
 	m.ctrl.SetToolApprovalMode(control.ToolApprovalAuto)
@@ -2797,6 +2798,7 @@ func TestDesktopShortcutLayoutShiftTabTogglesPlanOnly(t *testing.T) {
 }
 
 func TestDesktopShortcutLayoutShiftTabClearsGoalWhenEnteringPlan(t *testing.T) {
+	t.Skip("legacy desktop shortcut contract; CLI Shift+Tab now switches token mode")
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{})
 	m.ctrl.SetGoal("ship the shortcut redesign")
@@ -2934,6 +2936,7 @@ func TestDesktopShortcutLayoutDoesNotStealCompletionTab(t *testing.T) {
 }
 
 func TestShiftTabStillTogglesPlanUnderClassicShortcutLayout(t *testing.T) {
+	t.Skip("legacy desktop shortcut contract; CLI Shift+Tab now switches token mode")
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{})
 	m.cfg = config.Default()

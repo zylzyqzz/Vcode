@@ -295,7 +295,7 @@ func TestRenderMCPManagerDetailCompactsConfigPath(t *testing.T) {
 		stage: mcpStageDetail,
 		name:  "github",
 		snapshot: mcpSnapshot{
-			configPath: "/Users/example/Library/Application Support/vcode/config.toml",
+			configPath: "/Users/example/Library/Application Support/vcode/projects/very-long-project-name/config.toml",
 			servers: []mcpServerView{{
 				Name: "github", Transport: "stdio", Status: "deferred", Configured: true,
 				Tier: "background", Command: "npx", Args: []string{"-y", "@modelcontextprotocol/server-github"},

@@ -771,8 +771,8 @@ func TestSkillPickerRendersInMainArea(t *testing.T) {
 
 	rows := m.bottomRows()
 	footerRows := strings.Count(m.renderMainManagerFooter(), "\n") + 1
-	if want := footerRows + 2; rows != want {
-		t.Fatalf("bottomRows with skill picker open got %d, want %d (footer + status rows)", rows, want)
+	if want := footerRows + 1; rows != want {
+		t.Fatalf("bottomRows with skill picker open got %d, want %d (footer + compact status row)", rows, want)
 	}
 	if !m.hideComposer() {
 		t.Fatal("skill picker should hide the composer")
