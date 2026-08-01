@@ -88,9 +88,11 @@ vcode doctor                  Diagnose configuration, model, tools, and safety
 vcode doctor --json           Print machine-readable diagnostics
 vcode setup                   Create or migrate local configuration
 vcode task list                List durable project tasks
+vcode task list --json         Emit task state for scripts and CI
 vcode task global              List tasks across projects
+vcode task global --json       Emit the global task index as JSON
 vcode task show <id>           Show task and node state (`--json` supported)
-vcode task logs <id>           Show task lifecycle events
+vcode task logs <id>           Show task lifecycle events (`--json` supported)
 vcode task plan <id>           Generate a Chinese read-only execution plan
 vcode task approve <id>        Approve the plan before any write-capable node
 vcode task resume <id>         Recover interrupted work

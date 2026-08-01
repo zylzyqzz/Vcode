@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -79,5 +80,26 @@ func TestPlanRequiresApprovalBeforeExecution(t *testing.T) {
 	approved, err := store.Get(task.ID)
 	if err != nil || approved.Status != taskgraph.Ready {
 		t.Fatalf("approved task=%+v err=%v", approved, err)
+	}
+}
+
+func TestTaskJSONListAndLogsAreMachineReadable(t *testing.T) {
+	store := taskgraph.NewStore(t.TempDir())
+	task, err := store.Create("json task", ".", []taskgraph.Node{{ID: "build", Role: taskgraph.Build}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendEvent(&task, taskgraph.Event{Type: "operator_test", Message: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	list := captureStdout(t, func() { listTasks(store, true) })
+	var tasks []taskgraph.Task
+	if err := json.Unmarshal([]byte(list), &tasks); err != nil || len(tasks) != 1 || tasks[0].ID != task.ID {
+		t.Fatalf("list json=%q err=%v", list, err)
+	}
+	logs := captureStdout(t, func() { showTaskLogs(store, task.ID, true) })
+	var events []taskgraph.Event
+	if err := json.Unmarshal([]byte(logs), &events); err != nil || len(events) == 0 || events[0].Type != "operator_test" {
+		t.Fatalf("logs json=%q err=%v", logs, err)
 	}
 }

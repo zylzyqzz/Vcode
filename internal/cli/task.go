@@ -23,23 +23,23 @@ func taskCommand(args []string) int {
 	store := taskgraph.NewStore(root)
 	global := taskgraph.NewIndex(config.VcodeHomeDir())
 	if len(args) == 0 || args[0] == "list" {
-		return listTasks(store)
+		return listTasks(store, containsTaskArg(args[1:], "--json"))
 	}
 	switch args[0] {
 	case "global":
-		return listGlobalTasks(global)
+		return listGlobalTasks(global, containsTaskArg(args[1:], "--json"))
 	case "show":
 		if len(args) < 2 {
 			fmt.Fprintln(stderr(), "usage: vcode task show <task-id>")
 			return 2
 		}
-		return showTask(store, args[1], len(args) > 2 && args[2] == "--json")
+		return showTask(store, args[1], containsTaskArg(args[2:], "--json"))
 	case "logs":
 		if len(args) < 2 {
 			fmt.Fprintln(stderr(), "usage: vcode task logs <task-id>")
 			return 2
 		}
-		return showTaskLogs(store, args[1])
+		return showTaskLogs(store, args[1], containsTaskArg(args[2:], "--json"))
 	case "create":
 		goal := strings.TrimSpace(strings.Join(args[1:], " "))
 		if goal == "" {
@@ -456,14 +456,27 @@ func changeTaskState(store *taskgraph.Store, global *taskgraph.Index, action, id
 	return 0
 }
 
-func listGlobalTasks(index *taskgraph.Index) int {
+func listGlobalTasks(index *taskgraph.Index, asJSON bool) int {
 	entries, err := index.List()
 	if err != nil {
 		fmt.Fprintln(stderr(), "error:", err)
 		return 1
 	}
 	if len(entries) == 0 {
+		if asJSON {
+			fmt.Println("[]")
+			return 0
+		}
 		fmt.Println("no global tasks")
+		return 0
+	}
+	if asJSON {
+		data, err := json.MarshalIndent(entries, "", "  ")
+		if err != nil {
+			fmt.Fprintln(stderr(), "error:", err)
+			return 1
+		}
+		fmt.Println(string(data))
 		return 0
 	}
 	for _, entry := range entries {
@@ -472,14 +485,27 @@ func listGlobalTasks(index *taskgraph.Index) int {
 	return 0
 }
 
-func listTasks(store *taskgraph.Store) int {
+func listTasks(store *taskgraph.Store, asJSON bool) int {
 	tasks, err := store.List()
 	if err != nil {
 		fmt.Fprintln(stderr(), "error:", err)
 		return 1
 	}
 	if len(tasks) == 0 {
+		if asJSON {
+			fmt.Println("[]")
+			return 0
+		}
 		fmt.Println("no tasks")
+		return 0
+	}
+	if asJSON {
+		data, err := json.MarshalIndent(tasks, "", "  ")
+		if err != nil {
+			fmt.Fprintln(stderr(), "error:", err)
+			return 1
+		}
+		fmt.Println(string(data))
 		return 0
 	}
 	for _, t := range tasks {
@@ -520,11 +546,20 @@ func showTask(store *taskgraph.Store, id string, asJSON bool) int {
 	return 0
 }
 
-func showTaskLogs(store *taskgraph.Store, id string) int {
+func showTaskLogs(store *taskgraph.Store, id string, asJSON bool) int {
 	t, err := store.Get(id)
 	if err != nil {
 		fmt.Fprintln(stderr(), "error:", err)
 		return 1
+	}
+	if asJSON {
+		data, marshalErr := json.MarshalIndent(t.Events, "", "  ")
+		if marshalErr != nil {
+			fmt.Fprintln(stderr(), "error:", marshalErr)
+			return 1
+		}
+		fmt.Println(string(data))
+		return 0
 	}
 	for _, e := range t.Events {
 		fmt.Printf("%s %-18s %-12s %-8s %s\n", e.Timestamp.Local().Format("2006-01-02 15:04:05"), e.Type, e.NodeID, e.Role, e.Message)
