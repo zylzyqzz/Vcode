@@ -46,6 +46,29 @@ func TestSchedulerRetriesThenFails(t *testing.T) {
 	}
 }
 
+func TestSchedulerIsIdempotentAfterSuccess(t *testing.T) {
+	store := NewStore(t.TempDir())
+	task, err := store.Create("idempotent", ".", []Node{{ID: "one", Role: Build}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var runs int
+	runner := func(context.Context, Node) NodeResult {
+		runs++
+		return NodeResult{Verification: &Verification{Status: "VERIFIED"}}
+	}
+	s := Scheduler{Store: store, MaxParallel: 1}
+	if err := s.Run(context.Background(), &task, runner); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Run(context.Background(), &task, runner); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 1 {
+		t.Fatalf("runner calls=%d, want 1", runs)
+	}
+}
+
 func TestSchedulerAggregatesVerificationOutcome(t *testing.T) {
 	s := NewStore(t.TempDir())
 	task, err := s.Create("verify", ".", []Node{{ID: "test", Role: Test}})

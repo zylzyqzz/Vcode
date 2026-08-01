@@ -50,6 +50,12 @@ func (s Scheduler) Run(ctx context.Context, task *Task, runner NodeRunner) error
 	if s.DefaultRetry <= 0 {
 		s.DefaultRetry = 2
 	}
+	if task.Status == Succeeded && allSucceeded(*task) {
+		if task.Outcome == "" {
+			task.Outcome = aggregateOutcome(*task)
+		}
+		return nil
+	}
 	if task.Status == "" || task.Status == Interrupted {
 		if err := s.Store.RecoverInterrupted(task); err != nil {
 			return err

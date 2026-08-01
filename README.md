@@ -94,6 +94,7 @@ vcode task logs <id>           Show task lifecycle events
 vcode task resume <id>         Recover interrupted work
 vcode task retry <id> <node>   Retry one failed node
 vcode task run <id>             Execute the task graph through Vcode agents
+vcode task merge <id> [node]    Integrate committed node work into the project
 ```
 
 Inside an interactive session:
@@ -137,7 +138,24 @@ mode = "read_only"
 model = "deepseek-v4-flash"
 mode = "autonomous"
 max_steps = 80
+tools = ["read_file", "search", "write_file", "patch", "bash"]
 ```
+
+For long-running development, create a durable task, inspect its plan, then run
+the graph. Build nodes execute in isolated Git worktrees and record commits;
+integration is explicit so a conflict blocks the task instead of silently
+overwriting the main worktree:
+
+```sh
+vcode task create "实现并验证用户认证模块"
+vcode task show <id> --json
+vcode task run <id>
+vcode task merge <id>
+```
+
+Each node records changed files, artifacts, retries, and verification evidence.
+The final task outcome is `VERIFIED`, `PARTIAL`, or `UNVERIFIED`; a missing or
+failed check is never presented as a successful completion.
 
 ## Development
 

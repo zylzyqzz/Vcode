@@ -1,5 +1,9 @@
 # Active Tasks
 
+- [x] Durable task graph with isolated build worktrees, commit/integrate flow, retry, recovery, and verification outcomes.
+- [x] Role-specific model and tool boundaries for long-task agents.
+- [ ] Compact TUI task phase summaries and cross-platform long-task smoke tests.
+
 ## AI Project OS initialization and durable task graph
 
 - Status: in progress
