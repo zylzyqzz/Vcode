@@ -55,6 +55,68 @@ func TestCoordinatorInterfaceCanBeDrivenBySchedulerPolicy(t *testing.T) {
 	}
 }
 
+func TestApplyDecisionAddsDynamicNodeAtomically(t *testing.T) {
+	store := NewStore(t.TempDir())
+	task, err := store.Create("dynamic", ".", []Node{{ID: "explore", Role: Explore}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.ApplyDecision(&task, CoordinationDecision{Reason: "发现需要审计", Actions: []CoordinationAction{{
+		Kind: ActionAddNode,
+		Node: &Node{ID: "audit", Role: Review, DependsOn: []string{"explore"}},
+	}}})
+	if err != nil || len(task.Nodes) != 2 || task.Nodes[1].Status != Pending {
+		t.Fatalf("nodes=%+v err=%v", task.Nodes, err)
+	}
+	loaded, err := store.Get(task.ID)
+	if err != nil || len(loaded.Events) != 1 || loaded.Events[0].Type != "coordination_decision" {
+		t.Fatalf("loaded=%+v err=%v", loaded, err)
+	}
+}
+
+func TestApplyDecisionRetryResetsNodeState(t *testing.T) {
+	store := NewStore(t.TempDir())
+	task, err := store.Create("retry", ".", []Node{{ID: "build", Role: Build, Status: Failed, Error: "compile"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ApplyDecision(&task, CoordinationDecision{Reason: "交给修复 Agent", Actions: []CoordinationAction{{Kind: ActionRetryNode, NodeID: "build"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if task.Nodes[0].Status != Pending || task.Nodes[0].Error != "" {
+		t.Fatalf("node=%+v", task.Nodes[0])
+	}
+}
+
+func TestApplyDecisionWaitAndCancelChangeTaskState(t *testing.T) {
+	store := NewStore(t.TempDir())
+	task, err := store.Create("operator", ".", []Node{{ID: "build", Role: Build}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ApplyDecision(&task, CoordinationDecision{Reason: "需要批准", Actions: []CoordinationAction{{Kind: ActionWait, Message: "等待批准"}}}); err != nil || task.Status != Blocked {
+		t.Fatalf("wait status=%q err=%v", task.Status, err)
+	}
+	if err := store.ApplyDecision(&task, CoordinationDecision{Reason: "用户取消", Actions: []CoordinationAction{{Kind: ActionCancel, Message: "用户取消"}}}); err != nil || task.Status != Cancelled {
+		t.Fatalf("cancel status=%q err=%v", task.Status, err)
+	}
+}
+
+func TestApplyDecisionRejectsWholeMutationBeforePersisting(t *testing.T) {
+	store := NewStore(t.TempDir())
+	task, err := store.Create("atomic", ".", []Node{{ID: "explore", Role: Explore}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.ApplyDecision(&task, CoordinationDecision{Reason: "bad", Actions: []CoordinationAction{
+		{Kind: ActionAddNode, Node: &Node{ID: "audit", Role: Review}},
+		{Kind: ActionAddNode, Node: &Node{ID: "audit", Role: Review}},
+	}})
+	if err == nil || len(task.Nodes) != 1 {
+		t.Fatalf("err=%v nodes=%d", err, len(task.Nodes))
+	}
+}
+
 type coordinatorStub struct{}
 
 func (coordinatorStub) Decide(context.Context, CoordinationSnapshot) (CoordinationDecision, error) {

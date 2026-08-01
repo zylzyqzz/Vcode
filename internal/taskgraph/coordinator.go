@@ -114,6 +114,46 @@ func ValidateDecision(task Task, decision CoordinationDecision) error {
 	return nil
 }
 
+// ApplyDecision is the durable mutation point for Coordinator output. The
+// decision is validated in full before any graph mutation, so a malformed
+// model response cannot leave half of a fan-out persisted.
+func (s *Store) ApplyDecision(t *Task, decision CoordinationDecision) error {
+	if t == nil {
+		return errors.New("task is nil")
+	}
+	if err := ValidateDecision(*t, decision); err != nil {
+		return err
+	}
+	for _, action := range decision.Actions {
+		switch action.Kind {
+		case ActionAddNode:
+			n := *action.Node
+			if n.Status == "" {
+				n.Status = Pending
+			}
+			if n.MaxAttempts <= 0 {
+				n.MaxAttempts = 2
+			}
+			t.Nodes = append(t.Nodes, n)
+		case ActionRetryNode:
+			for i := range t.Nodes {
+				if t.Nodes[i].ID == action.NodeID {
+					t.Nodes[i].Status = Pending
+					t.Nodes[i].Error = ""
+					t.Nodes[i].FinishedAt = nil
+				}
+			}
+		case ActionWait:
+			t.Status = Blocked
+		case ActionCancel:
+			t.Status = Cancelled
+		}
+	}
+	return s.AppendEvent(t, Event{Type: "coordination_decision", Message: decision.Reason, Data: map[string]string{
+		"actions": fmt.Sprintf("%d", len(decision.Actions)),
+	}})
+}
+
 func hasWriteCapability(n Node) bool {
 	for _, configured := range n.Metadata {
 		for _, tool := range strings.FieldsFunc(configured, func(r rune) bool { return r == ',' || r == ' ' || r == ';' }) {
