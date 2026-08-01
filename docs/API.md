@@ -10,4 +10,6 @@ The `internal/taskgraph` package provides the first durable task API:
 - `ReadyNodes` returns nodes whose dependencies succeeded.
 - `Store.RecoverInterrupted` converts running nodes to resumable interrupted nodes.
 
+Completed tasks expose `outcome` as `VERIFIED`, `PARTIAL`, or `UNVERIFIED`. A successful Agent response without verification evidence is never promoted to `VERIFIED`.
+
 The API is deliberately independent from the TUI. A scheduler can later consume ready nodes and dispatch role-specific Agent runners without changing the persistence contract.

@@ -589,8 +589,8 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	subagentIdentity := func(modelRef, effort string) (string, string) {
 		return subagentEffectiveIdentity(cfg, modelName, entry, modelRef, effort)
 	}
-	taskModel := firstNonEmpty(cfg.Agent.SubagentModels["task"], cfg.Agent.SubagentModel)
-	taskEffort := firstNonEmpty(cfg.Agent.SubagentEfforts["task"], cfg.Agent.SubagentEffort)
+	taskModel := cfg.AgentRoleModel("build", firstNonEmpty(cfg.Agent.SubagentModels["task"], cfg.Agent.SubagentModel))
+	taskEffort := cfg.AgentRoleEffort("build", firstNonEmpty(cfg.Agent.SubagentEfforts["task"], cfg.Agent.SubagentEffort))
 	maxSubagentDepth := agent.NormalizeMaxSubagentDepth(cfg.Agent.MaxSubagentDepth)
 	taskToolAdded := false
 	readOnlyTaskToolAdded := false
@@ -1048,7 +1048,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	// Coordinator with its own session, kept separate for cache stability. The
 	// planner gets the same standing memory context and a filtered read-only
 	// research tool set, so it can inspect rules/code without side effects.
-	if pm := cfg.Agent.PlannerModel; pm != "" && !tokenEconomy {
+	if pm := cfg.AgentRoleModel("plan", cfg.Agent.PlannerModel); pm != "" && !tokenEconomy {
 		pe, ok := cfg.ResolveModel(pm)
 		if !ok {
 			return nil, fmt.Errorf("planner_model %q is not a configured provider", pm)

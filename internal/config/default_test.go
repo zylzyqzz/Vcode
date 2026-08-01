@@ -30,6 +30,21 @@ func TestDefaultBashModeAuto(t *testing.T) {
 	}
 }
 
+func TestAgentRoleFallsBackToLegacyFields(t *testing.T) {
+	cfg := Default()
+	cfg.Agent.PlannerModel = "legacy-plan"
+	if got := cfg.AgentRoleModel("plan", cfg.Agent.PlannerModel); got != "legacy-plan" {
+		t.Fatalf("role model fallback = %q", got)
+	}
+	cfg.Agent.Roles = map[string]AgentRoleConfig{"plan": {Model: "role-plan", Effort: "high"}}
+	if got := cfg.AgentRoleModel("plan", cfg.Agent.PlannerModel); got != "role-plan" {
+		t.Fatalf("role model = %q", got)
+	}
+	if got := cfg.AgentRoleEffort("plan", "low"); got != "high" {
+		t.Fatalf("role effort = %q", got)
+	}
+}
+
 func TestDefaultDesktopAppearanceAutoGraphite(t *testing.T) {
 	cfg := Default()
 	if got := cfg.DesktopTheme(); got != "auto" {

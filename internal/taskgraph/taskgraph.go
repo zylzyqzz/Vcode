@@ -43,6 +43,7 @@ type Task struct {
 	ID          string    `json:"id"`
 	Goal        string    `json:"goal"`
 	Status      Status    `json:"status"`
+	Outcome     string    `json:"outcome,omitempty"` // VERIFIED|PARTIAL|UNVERIFIED|BLOCKED
 	ProjectRoot string    `json:"project_root"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`

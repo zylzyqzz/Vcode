@@ -932,19 +932,20 @@ func (c *Config) BashMode() string {
 // each model's prompt prefix stays cache-stable). SubagentModel is the optional
 // default for runAs=subagent skills; SubagentModels overrides it per skill name.
 type AgentConfig struct {
-	SystemPrompt        string            `toml:"system_prompt"`
-	SystemPromptFile    string            `toml:"system_prompt_file"`
-	MaxSteps            int               `toml:"max_steps"`         // tool-call rounds per turn; 0 = unlimited
-	PlannerMaxSteps     int               `toml:"planner_max_steps"` // planner read-only tool-call rounds; 0 = unlimited
-	Temperature         float64           `toml:"temperature"`
-	PlannerModel        string            `toml:"planner_model"`
-	GuardianModel       string            `toml:"guardian_model"`
-	GuardianTemperature float64           `toml:"guardian_temperature"`
-	SubagentModel       string            `toml:"subagent_model"`
-	SubagentModels      map[string]string `toml:"subagent_models"`
-	SubagentEffort      string            `toml:"subagent_effort"`
-	SubagentEfforts     map[string]string `toml:"subagent_efforts"`
-	MaxSubagentDepth    int               `toml:"max_subagent_depth"`
+	SystemPrompt        string                     `toml:"system_prompt"`
+	SystemPromptFile    string                     `toml:"system_prompt_file"`
+	MaxSteps            int                        `toml:"max_steps"`         // tool-call rounds per turn; 0 = unlimited
+	PlannerMaxSteps     int                        `toml:"planner_max_steps"` // planner read-only tool-call rounds; 0 = unlimited
+	Temperature         float64                    `toml:"temperature"`
+	PlannerModel        string                     `toml:"planner_model"`
+	GuardianModel       string                     `toml:"guardian_model"`
+	GuardianTemperature float64                    `toml:"guardian_temperature"`
+	SubagentModel       string                     `toml:"subagent_model"`
+	SubagentModels      map[string]string          `toml:"subagent_models"`
+	SubagentEffort      string                     `toml:"subagent_effort"`
+	SubagentEfforts     map[string]string          `toml:"subagent_efforts"`
+	MaxSubagentDepth    int                        `toml:"max_subagent_depth"`
+	Roles               map[string]AgentRoleConfig `toml:"roles"`
 	// OutputStyle selects a persona/tone block folded into the system prompt at
 	// startup (a built-in like "explanatory"/"learning"/"concise", or a custom
 	// .vcode/output-styles/<name>.md). Empty = the unmodified prompt.
@@ -984,6 +985,38 @@ type AgentConfig struct {
 	// configs default to disabled for the fast CLI profile; legacy user configs
 	// are backfilled by LoadForRoot when they predate this setting.
 	MemoryCompiler MemoryCompilerConfig `toml:"memory_compiler"`
+}
+
+// AgentRoleConfig describes the model and execution boundary for a named
+// long-task role. Legacy planner/subagent fields remain supported and are used
+// as fallbacks when a role entry is absent.
+type AgentRoleConfig struct {
+	Model    string   `toml:"model"`
+	Effort   string   `toml:"effort"`
+	Mode     string   `toml:"mode"` // read_only|autonomous
+	MaxSteps int      `toml:"max_steps"`
+	Tools    []string `toml:"tools"`
+}
+
+func (c *Config) AgentRole(name string) AgentRoleConfig {
+	if c == nil || c.Agent.Roles == nil {
+		return AgentRoleConfig{}
+	}
+	return c.Agent.Roles[strings.ToLower(strings.TrimSpace(name))]
+}
+
+func (c *Config) AgentRoleModel(name, fallback string) string {
+	if v := strings.TrimSpace(c.AgentRole(name).Model); v != "" {
+		return v
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func (c *Config) AgentRoleEffort(name, fallback string) string {
+	if v := strings.TrimSpace(c.AgentRole(name).Effort); v != "" {
+		return v
+	}
+	return strings.TrimSpace(fallback)
 }
 
 // MemoryCompilerConfig controls the v5 execution-memory compiler.

@@ -9,3 +9,4 @@
 - Verification: project-aware checks for Go, Node.js, Python, Rust, and configured commands.
 - Platforms: Windows, Linux, macOS; amd64 and arm64 release targets.
 - Build mode: `CGO_ENABLED=0` single CLI binary where supported by dependencies.
+- Role routing: `agent.roles.<plan|explore|build|test|review>` with model, effort, mode, max_steps, and tool scope.

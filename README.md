@@ -88,9 +88,12 @@ vcode doctor                  Diagnose configuration, model, tools, and safety
 vcode doctor --json           Print machine-readable diagnostics
 vcode setup                   Create or migrate local configuration
 vcode task list                List durable project tasks
-vcode task show <id>           Show task and node state
+vcode task global              List tasks across projects
+vcode task show <id>           Show task and node state (`--json` supported)
+vcode task logs <id>           Show task lifecycle events
 vcode task resume <id>         Recover interrupted work
 vcode task retry <id> <node>   Retry one failed node
+vcode task run <id>             Execute the task graph through Vcode agents
 ```
 
 Inside an interactive session:
@@ -122,6 +125,19 @@ Configuration is resolved in this order:
 See the [CLI guide](./docs/GUIDE.md) for providers, permissions, MCP, Skills, sessions, and configuration paths. Secrets should be supplied through environment variables or the Vcode user `.env` file; do not commit API keys.
 
 Long-running work is stored under `.vcode/tasks/`. Task records preserve node dependencies, lifecycle events, retry state, artifacts, and verification results so another Vcode or AI agent can continue the project without reconstructing the whole task from chat history.
+
+Role-specific model routing is available through `agent.roles`:
+
+```toml
+[agent.roles.plan]
+model = "deepseek-v4-flash"
+mode = "read_only"
+
+[agent.roles.build]
+model = "deepseek-v4-flash"
+mode = "autonomous"
+max_steps = 80
+```
 
 ## Development
 

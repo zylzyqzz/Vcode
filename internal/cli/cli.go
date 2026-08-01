@@ -203,14 +203,19 @@ func configureCLIThemeFromConfigNoProbe() {
 // the agent's typed event stream — runAgent passes a TextSink that renders to
 // stdout, the TUI passes an event-channel sink so events become tea.Msgs.
 func setup(ctx context.Context, modelName string, maxStepsOverride int, requireKey bool, sink event.Sink) (*control.Controller, error) {
+	return setupWithWorkspace(ctx, modelName, maxStepsOverride, requireKey, sink, "")
+}
+
+func setupWithWorkspace(ctx context.Context, modelName string, maxStepsOverride int, requireKey bool, sink event.Sink, workspaceRoot string) (*control.Controller, error) {
 	migrateMCPConfigForCLIWorkspace()
 	return boot.Build(ctx, boot.Options{
-		Model:      modelName,
-		MaxSteps:   maxStepsOverride,
-		RequireKey: requireKey,
-		Sink:       sink,
-		TokenMode:  boot.TokenModeEconomy,
-		SessionDir: resolveCLISessionDir(),
+		Model:         modelName,
+		MaxSteps:      maxStepsOverride,
+		RequireKey:    requireKey,
+		Sink:          sink,
+		TokenMode:     boot.TokenModeEconomy,
+		SessionDir:    resolveCLISessionDir(),
+		WorkspaceRoot: workspaceRoot,
 	})
 }
 

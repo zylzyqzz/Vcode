@@ -273,6 +273,33 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	} else {
 		b.WriteString("# max_subagent_depth = 2   # nested subagent delegation depth; set 1 to disable nested delegation\n")
 	}
+	if len(c.Agent.Roles) > 0 {
+		roles := make([]string, 0, len(c.Agent.Roles))
+		for role := range c.Agent.Roles {
+			roles = append(roles, role)
+		}
+		sort.Strings(roles)
+		for _, role := range roles {
+			r := c.Agent.Roles[role]
+			fmt.Fprintf(&b, "[agent.roles.%s]\n", renderTOMLKeyPart(role))
+			if r.Model != "" {
+				fmt.Fprintf(&b, "model = %q\n", r.Model)
+			}
+			if r.Effort != "" {
+				fmt.Fprintf(&b, "effort = %q\n", r.Effort)
+			}
+			if r.Mode != "" {
+				fmt.Fprintf(&b, "mode = %q\n", r.Mode)
+			}
+			if r.MaxSteps != 0 {
+				fmt.Fprintf(&b, "max_steps = %d\n", r.MaxSteps)
+			}
+			if len(r.Tools) > 0 {
+				fmt.Fprintf(&b, "tools = %s\n", renderStringArray(r.Tools))
+			}
+			b.WriteString("\n")
+		}
+	}
 	if c.Agent.OutputStyle != "" {
 		fmt.Fprintf(&b, "output_style = %q   # persona/tone folded into the prompt\n", c.Agent.OutputStyle)
 	} else {
