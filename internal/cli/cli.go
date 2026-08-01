@@ -207,9 +207,14 @@ func setup(ctx context.Context, modelName string, maxStepsOverride int, requireK
 }
 
 func setupWithWorkspace(ctx context.Context, modelName string, maxStepsOverride int, requireKey bool, sink event.Sink, workspaceRoot string) (*control.Controller, error) {
+	return setupWithWorkspaceRole(ctx, modelName, maxStepsOverride, requireKey, sink, workspaceRoot, "")
+}
+
+func setupWithWorkspaceRole(ctx context.Context, modelName string, maxStepsOverride int, requireKey bool, sink event.Sink, workspaceRoot, role string) (*control.Controller, error) {
 	migrateMCPConfigForCLIWorkspace()
 	return boot.Build(ctx, boot.Options{
 		Model:         modelName,
+		Role:          role,
 		MaxSteps:      maxStepsOverride,
 		RequireKey:    requireKey,
 		Sink:          sink,

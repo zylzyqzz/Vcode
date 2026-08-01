@@ -78,7 +78,10 @@ func agentKeepPolicy(keep []string) agent.KeepPolicy {
 // false so the UI is reachable before a key is set). Sink receives the agent's
 // typed event stream.
 type Options struct {
-	Model      string
+	Model string
+	// Role selects an optional named execution profile (for example build,
+	// plan, explore, or review). Empty keeps the normal interactive surface.
+	Role       string
 	MaxSteps   int
 	RequireKey bool
 	Sink       event.Sink
@@ -996,12 +999,30 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		})
 	}
 
+	// A role may narrow the model-visible tool surface without changing the
+	// shared registry used by MCP connectors and read-only child runners.
+	executorReg := reg
+	if names := cfg.AgentRole(opts.Role).Tools; len(names) > 0 {
+		executorReg = tool.NewRegistry()
+		allowed := make(map[string]struct{}, len(names))
+		for _, name := range names {
+			allowed[strings.TrimSpace(name)] = struct{}{}
+		}
+		for _, name := range reg.Names() {
+			if _, ok := allowed[name]; ok {
+				if t, exists := reg.Get(name); exists {
+					executorReg.Add(t)
+				}
+			}
+		}
+	}
+
 	execSess := agent.NewSession(sysPrompt)
 	var memCompiler *memorycompiler.Runtime
 	if cfg.MemoryCompilerEnabled() {
 		memCompiler = memorycompiler.New(config.MemoryCompilerDir(root))
 	}
-	executor := agent.New(execProv, reg, execSess, agent.Options{
+	executor := agent.New(execProv, executorReg, execSess, agent.Options{
 		MaxSteps:                           maxSteps,
 		Temperature:                        cfg.Agent.Temperature,
 		Pricing:                            entry.Price,

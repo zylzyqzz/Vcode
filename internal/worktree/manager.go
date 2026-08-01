@@ -64,6 +64,53 @@ func (m *Manager) List(ctx context.Context) (string, error) {
 	return runGitOutput(ctx, m.ProjectRoot, "worktree", "list", "--porcelain")
 }
 
+func (m *Manager) ChangedFiles(ctx context.Context, taskID, nodeID string) ([]string, error) {
+	path, err := m.Path(taskID, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := runGitOutput(ctx, path, "status", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if len(line) > 3 {
+			files = append(files, strings.TrimSpace(line[2:]))
+		}
+	}
+	return files, nil
+}
+
+func (m *Manager) Commit(ctx context.Context, taskID, nodeID, message string) (string, error) {
+	path, err := m.Path(taskID, nodeID)
+	if err != nil {
+		return "", err
+	}
+	if err := runGit(ctx, path, "add", "-A"); err != nil {
+		return "", err
+	}
+	if err := runGit(ctx, path, "commit", "-m", message); err != nil {
+		return "", err
+	}
+	return runGitOutput(ctx, path, "rev-parse", "HEAD")
+}
+
+func (m *Manager) MergeCommit(ctx context.Context, commit string) error {
+	commit = strings.TrimSpace(commit)
+	if commit == "" {
+		return errors.New("commit is required")
+	}
+	if err := runGit(ctx, m.ProjectRoot, "cherry-pick", commit); err != nil {
+		// Abort only an in-progress cherry-pick. If Git rejected before it
+		// started, abort is harmless and leaves the target worktree clean.
+		_ = runGit(ctx, m.ProjectRoot, "cherry-pick", "--abort")
+		return fmt.Errorf("merge commit %s: %w", commit, err)
+	}
+	return nil
+}
+
 func runGit(ctx context.Context, dir string, args ...string) error {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Stdout = nil

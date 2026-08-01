@@ -15,6 +15,7 @@ type NodeRunner func(context.Context, Node) NodeResult
 
 type NodeResult struct {
 	Workspace    string
+	Commit       string
 	ChangedFiles []string
 	Artifacts    []Artifact
 	Verification *Verification
@@ -26,6 +27,13 @@ type Scheduler struct {
 	Store        *Store
 	MaxParallel  int
 	DefaultRetry int
+	OnEvent      func(Event)
+}
+
+func (s Scheduler) emit(e Event) {
+	if s.OnEvent != nil {
+		s.OnEvent(e)
+	}
 }
 
 func (s Scheduler) Run(ctx context.Context, task *Task, runner NodeRunner) error {
@@ -81,6 +89,7 @@ func (s Scheduler) Run(ctx context.Context, task *Task, runner NodeRunner) error
 			if err := s.Store.UpdateNode(task, node.ID, Running, "scheduled"); err != nil {
 				return err
 			}
+			s.emit(Event{Type: "node_started", TaskID: task.ID, NodeID: node.ID, Role: node.Role, Message: node.Title})
 			wg.Add(1)
 			go func(n Node) {
 				defer wg.Done()
@@ -109,6 +118,7 @@ func (s Scheduler) applyResult(task *Task, rr nodeRunResult) error {
 			continue
 		}
 		n.ChangedFiles = rr.result.ChangedFiles
+		n.Commit = rr.result.Commit
 		n.Artifacts = rr.result.Artifacts
 		n.Verification = rr.result.Verification
 		n.Error = ""
@@ -116,6 +126,7 @@ func (s Scheduler) applyResult(task *Task, rr nodeRunResult) error {
 			n.Workspace = rr.result.Workspace
 		}
 		if rr.result.Err == nil {
+			s.emit(Event{Type: "node_succeeded", TaskID: task.ID, NodeID: n.ID, Role: n.Role, Message: rr.result.Message})
 			return s.Store.UpdateNode(task, n.ID, Succeeded, rr.result.Message)
 		}
 		n.Error = rr.result.Err.Error()
@@ -125,8 +136,10 @@ func (s Scheduler) applyResult(task *Task, rr nodeRunResult) error {
 		}
 		if n.Attempt < maxAttempts {
 			n.Status = Pending
+			s.emit(Event{Type: "node_retrying", TaskID: task.ID, NodeID: n.ID, Role: n.Role, Message: n.Error})
 			return s.Store.AppendEvent(task, Event{Type: "node_retrying", NodeID: n.ID, Role: n.Role, Message: fmt.Sprintf("attempt %d/%d: %s", n.Attempt, maxAttempts, n.Error)})
 		}
+		s.emit(Event{Type: "node_failed", TaskID: task.ID, NodeID: n.ID, Role: n.Role, Message: n.Error})
 		return s.Store.UpdateNode(task, n.ID, Failed, n.Error)
 	}
 	return fmt.Errorf("scheduler result references unknown node %q", rr.id)

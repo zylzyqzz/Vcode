@@ -65,8 +65,14 @@ func taskCommand(args []string) int {
 			return 2
 		}
 		return runTaskGraph(store, args[1])
+	case "merge", "integrate":
+		if len(args) < 2 {
+			fmt.Fprintln(stderr(), "usage: vcode task merge <task-id> [node-id]")
+			return 2
+		}
+		return mergeTaskNode(store, global, args[1], args[2:])
 	default:
-		fmt.Fprintln(stderr(), "usage: vcode task [list|show|create|resume|retry|pause|cancel]")
+		fmt.Fprintln(stderr(), "usage: vcode task [list|show|create|resume|retry|pause|cancel|run|merge]")
 		return 2
 	}
 }
@@ -86,7 +92,13 @@ func runTaskGraph(store *taskgraph.Store, id string) int {
 	if cfg, loadErr := config.Load(); loadErr == nil {
 		sink = withNotifications(sink, cfg)
 	}
-	scheduler := taskgraph.Scheduler{Store: store, MaxParallel: 4, DefaultRetry: 2}
+	scheduler := taskgraph.Scheduler{Store: store, MaxParallel: 4, DefaultRetry: 2, OnEvent: func(e taskgraph.Event) {
+		level := event.LevelInfo
+		if e.Type == "node_failed" || e.Type == "node_retrying" {
+			level = event.LevelWarn
+		}
+		sink.Emit(event.Event{Kind: event.Phase, Text: fmt.Sprintf("task %s · %s · %s", e.NodeID, e.Type, e.Message), Level: level})
+	}}
 	worktrees := worktree.NewManager(task.ProjectRoot)
 	err = scheduler.Run(ctx, &task, func(ctx context.Context, node taskgraph.Node) taskgraph.NodeResult {
 		role := string(node.Role)
@@ -105,7 +117,7 @@ func runTaskGraph(store *taskgraph.Store, id string) int {
 		if workspace == "" {
 			workspace = task.ProjectRoot
 		}
-		ctrl, setupErr := setupWithWorkspace(ctx, node.Model, node.MaxAttempts, true, sink, workspace)
+		ctrl, setupErr := setupWithWorkspaceRole(ctx, node.Model, node.MaxAttempts, true, sink, workspace, role)
 		if setupErr != nil {
 			return taskgraph.NodeResult{Err: setupErr}
 		}
@@ -118,12 +130,23 @@ func runTaskGraph(store *taskgraph.Store, id string) int {
 		if err := ctrl.Run(ctx, prompt); err != nil {
 			return taskgraph.NodeResult{Workspace: workspace, Err: err}
 		}
-		result := verify.Run(ctx, task.ProjectRoot)
+		result := verify.Run(ctx, workspace)
 		v := &taskgraph.Verification{Status: string(result.Status), Passed: append([]string(nil), result.Passed...), Failed: append([]string(nil), result.Failed...), Skipped: result.Skipped}
 		if len(result.Failed) > 0 {
 			return taskgraph.NodeResult{Workspace: workspace, Verification: v, Err: fmt.Errorf("verification failed: %s", strings.Join(result.Failed, "; "))}
 		}
-		return taskgraph.NodeResult{Workspace: workspace, Verification: v, Message: "agent completed and project verification passed"}
+		changed, changedErr := worktrees.ChangedFiles(ctx, task.ID, node.ID)
+		if changedErr != nil {
+			return taskgraph.NodeResult{Workspace: workspace, Verification: v, Err: changedErr}
+		}
+		commit := ""
+		if node.Role == taskgraph.Build && len(changed) > 0 {
+			commit, changedErr = worktrees.Commit(ctx, task.ID, node.ID, fmt.Sprintf("vcode task %s build %s", task.ID, node.ID))
+			if changedErr != nil {
+				return taskgraph.NodeResult{Workspace: workspace, ChangedFiles: changed, Verification: v, Err: changedErr}
+			}
+		}
+		return taskgraph.NodeResult{Workspace: workspace, Commit: commit, ChangedFiles: changed, Verification: v, Message: "agent completed and project verification passed"}
 	})
 	_ = taskgraph.NewIndex(config.VcodeHomeDir()).Upsert(task)
 	if err != nil {
@@ -131,6 +154,40 @@ func runTaskGraph(store *taskgraph.Store, id string) int {
 		return 1
 	}
 	fmt.Printf("task %s completed\n", id)
+	return 0
+}
+
+func mergeTaskNode(store *taskgraph.Store, global *taskgraph.Index, id string, args []string) int {
+	task, err := store.Get(id)
+	if err != nil {
+		fmt.Fprintln(stderr(), "error:", err)
+		return 1
+	}
+	manager := worktree.NewManager(task.ProjectRoot)
+	merged := 0
+	for i := range task.Nodes {
+		node := &task.Nodes[i]
+		if len(args) > 0 && node.ID != args[0] {
+			continue
+		}
+		if strings.TrimSpace(node.Commit) == "" {
+			continue
+		}
+		if err := manager.MergeCommit(context.Background(), node.Commit); err != nil {
+			_ = store.SetStatus(&task, taskgraph.Blocked, fmt.Sprintf("integration conflict in %s: %v", node.ID, err))
+			_ = global.Upsert(task)
+			fmt.Fprintln(stderr(), "integration blocked:", err)
+			return 1
+		}
+		merged++
+		_ = store.AppendEvent(&task, taskgraph.Event{Type: "node_integrated", NodeID: node.ID, Message: "commit merged into project"})
+	}
+	if len(args) > 0 && merged == 0 {
+		fmt.Fprintln(stderr(), "error: node has no committed changes", args[0])
+		return 1
+	}
+	_ = global.Upsert(task)
+	fmt.Printf("integrated %d node commit(s) for task %s\n", merged, id)
 	return 0
 }
 
