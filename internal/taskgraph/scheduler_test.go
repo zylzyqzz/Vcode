@@ -94,3 +94,30 @@ func TestAggregateOutcomeIgnoresReadOnlyResearch(t *testing.T) {
 		t.Fatalf("outcome=%q, want VERIFIED", got)
 	}
 }
+
+func TestSchedulerKeepsParallelSuccessWhenSiblingFails(t *testing.T) {
+	store := NewStore(t.TempDir())
+	task, err := store.Create("partial parallel", ".", []Node{
+		{ID: "good", Role: Build, MaxAttempts: 1},
+		{ID: "bad", Role: Build, MaxAttempts: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []string
+	err = (Scheduler{Store: store, MaxParallel: 2, OnEvent: func(e Event) { events = append(events, e.Type+":"+e.NodeID) }}).Run(context.Background(), &task, func(_ context.Context, n Node) NodeResult {
+		if n.ID == "bad" {
+			return NodeResult{Err: errors.New("compiler failed")}
+		}
+		return NodeResult{Verification: &Verification{Status: "VERIFIED"}}
+	})
+	if err == nil || task.Status != Failed || task.Outcome != "PARTIAL" {
+		t.Fatalf("err=%v status=%q outcome=%q", err, task.Status, task.Outcome)
+	}
+	if task.Nodes[0].Status != Succeeded {
+		t.Fatalf("successful sibling was lost: %+v", task.Nodes[0])
+	}
+	if len(events) < 2 {
+		t.Fatalf("scheduler emitted too few lifecycle events: %v", events)
+	}
+}
