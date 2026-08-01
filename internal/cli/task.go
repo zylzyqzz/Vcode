@@ -203,8 +203,42 @@ func dependencySummaries(task taskgraph.Task, node taskgraph.Node) string {
 	var out []string
 	for _, depID := range node.DependsOn {
 		for _, candidate := range task.Nodes {
-			if candidate.ID == depID && strings.TrimSpace(candidate.Summary) != "" {
-				out = append(out, fmt.Sprintf("[%s]\n%s", depID, candidate.Summary))
+			if candidate.ID != depID {
+				continue
+			}
+			var b strings.Builder
+			if summary := strings.TrimSpace(candidate.Summary); summary != "" {
+				b.WriteString(summary)
+			}
+			if len(candidate.ChangedFiles) > 0 {
+				if b.Len() > 0 {
+					b.WriteString("\n")
+				}
+				fmt.Fprintf(&b, "changed files: %s", strings.Join(candidate.ChangedFiles, ", "))
+			}
+			if candidate.Verification != nil {
+				if b.Len() > 0 {
+					b.WriteString("\n")
+				}
+				fmt.Fprintf(&b, "verification: %s", candidate.Verification.Status)
+				if len(candidate.Verification.Passed) > 0 {
+					fmt.Fprintf(&b, "; passed=%s", strings.Join(candidate.Verification.Passed, ", "))
+				}
+				if len(candidate.Verification.Failed) > 0 {
+					fmt.Fprintf(&b, "; failed=%s", strings.Join(candidate.Verification.Failed, ", "))
+				}
+				if candidate.Verification.Skipped != "" {
+					fmt.Fprintf(&b, "; skipped=%s", candidate.Verification.Skipped)
+				}
+			}
+			if candidate.Error != "" {
+				if b.Len() > 0 {
+					b.WriteString("\n")
+				}
+				fmt.Fprintf(&b, "error: %s", candidate.Error)
+			}
+			if b.Len() > 0 {
+				out = append(out, fmt.Sprintf("[%s]\n%s", depID, truncateTaskText(b.String(), 4000)))
 			}
 		}
 	}

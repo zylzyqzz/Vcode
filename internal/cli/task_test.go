@@ -40,12 +40,17 @@ func TestApplyNodeBudgetsDoesNotOverwriteExplicitLimit(t *testing.T) {
 
 func TestDependencySummariesFlowIntoNextRole(t *testing.T) {
 	task := taskgraph.Task{Nodes: []taskgraph.Node{
-		{ID: "explore", Summary: "发现配置位于 vcode.toml"},
+		{ID: "explore", Summary: "发现配置位于 vcode.toml", ChangedFiles: []string{"vcode.toml"}, Verification: &taskgraph.Verification{Status: "PARTIAL", Failed: []string{"go test ./..."}}},
 		{ID: "build", DependsOn: []string{"explore"}},
 	}}
 	got := dependencySummaries(task, task.Nodes[1])
 	if !strings.Contains(got, "发现配置位于") {
 		t.Fatalf("dependency summary missing: %q", got)
+	}
+	for _, want := range []string{"changed files: vcode.toml", "verification: PARTIAL", "failed=go test ./..."} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("dependency evidence %q missing: %q", want, got)
+		}
 	}
 	history := []provider.Message{{Role: provider.RoleUser, Content: "task"}, {Role: provider.RoleAssistant, Content: "完成了探索"}}
 	if got := lastAssistantSummary(history); got != "完成了探索" {
