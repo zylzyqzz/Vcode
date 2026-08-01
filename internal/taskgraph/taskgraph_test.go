@@ -29,7 +29,8 @@ func TestStorePersistsDependencyGraphAndReadyNodes(t *testing.T) {
 }
 
 func TestRecoverInterruptedNodes(t *testing.T) {
-	s := NewStore(t.TempDir())
+	root := t.TempDir()
+	s := NewStore(root)
 	task, err := s.Create("resume", ".", []Node{{ID: "build", Status: Running}})
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +40,10 @@ func TestRecoverInterruptedNodes(t *testing.T) {
 	}
 	if task.Nodes[0].Status != Interrupted {
 		t.Fatalf("status = %q, want interrupted", task.Nodes[0].Status)
+	}
+	loaded, err := NewStore(root).Get(task.ID)
+	if err != nil || loaded.Nodes[0].Status != Interrupted {
+		t.Fatalf("recovered state was not persisted: task=%+v err=%v", loaded, err)
 	}
 }
 
