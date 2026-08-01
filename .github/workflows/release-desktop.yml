@@ -16,24 +16,10 @@ name: Release desktop
 # pointer. A manual `channel: canary` dispatch builds with -X main.channel=canary
 # and uploads only to R2's canary/ pointer — no GitHub release, so canary never
 # shows on the releases page and never touches latest/.
-on:
-  push:
-    tags: ["desktop-v*"]
-  workflow_dispatch:
-    inputs:
-      channel:
-        description: "Release channel"
-        type: choice
-        options: [stable, canary]
-        default: stable
-      tag:
-        description: "stable: tag to publish (e.g. desktop-v1.1.0)"
-        required: false
-        type: string
-      base_version:
-        description: "canary: intended next stable version, e.g. 1.5.0"
-        required: false
-        type: string
+# Desktop remains as a compatibility archive for one migration cycle, but the
+# product is CLI-only now. Keeping this workflow file documents the old release
+# line without allowing a desktop tag or manual dispatch to publish binaries.
+on: {}
 
 permissions:
   contents: write # create the release and upload artifacts
