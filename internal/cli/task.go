@@ -101,7 +101,11 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 		return 1
 	}
 	if task.Status == taskgraph.Blocked {
-		fmt.Fprintln(stderr(), "task is awaiting approval; run `vcode task approve", id+"` first")
+		if taskNeedsApproval(task) {
+			fmt.Fprintln(stderr(), "task is awaiting approval; run `vcode task approve", id+"` first")
+		} else {
+			fmt.Fprintln(stderr(), "task is blocked or paused; inspect logs and run `vcode task resume", id+"` first")
+		}
 		return 1
 	}
 	ctx := context.Background()
@@ -292,7 +296,7 @@ func mergeTaskNode(store *taskgraph.Store, global *taskgraph.Index, id string, a
 		if len(args) > 0 && node.ID != args[0] {
 			continue
 		}
-		if strings.TrimSpace(node.Commit) == "" {
+		if node.Integrated || strings.TrimSpace(node.Commit) == "" {
 			continue
 		}
 		if err := manager.MergeCommit(context.Background(), node.Commit); err != nil {
@@ -301,6 +305,7 @@ func mergeTaskNode(store *taskgraph.Store, global *taskgraph.Index, id string, a
 			fmt.Fprintln(stderr(), "integration blocked:", err)
 			return 1
 		}
+		node.Integrated = true
 		merged++
 		_ = store.AppendEvent(&task, taskgraph.Event{Type: "node_integrated", NodeID: node.ID, Message: "commit merged into project"})
 	}
@@ -311,6 +316,18 @@ func mergeTaskNode(store *taskgraph.Store, global *taskgraph.Index, id string, a
 	_ = global.Upsert(task)
 	fmt.Printf("integrated %d node commit(s) for task %s\n", merged, id)
 	return 0
+}
+
+func taskNeedsApproval(task taskgraph.Task) bool {
+	for i := len(task.Events) - 1; i >= 0; i-- {
+		switch task.Events[i].Type {
+		case "task_ready":
+			return false
+		case "plan_ready":
+			return true
+		}
+	}
+	return false
 }
 
 func changeTaskState(store *taskgraph.Store, global *taskgraph.Index, action, id string, rest []string) int {
