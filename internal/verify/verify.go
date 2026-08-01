@@ -84,6 +84,10 @@ func Run(ctx context.Context, root string) Result {
 		return result
 	}
 	for _, check := range checks {
+		if err := ctx.Err(); err != nil {
+			result.Failed = append(result.Failed, fmt.Sprintf("%s: verification stopped: %s", check.Command, err))
+			break
+		}
 		var cmd *exec.Cmd
 		if strings.HasPrefix(check.Command, "npm ") {
 			cmd = exec.CommandContext(ctx, "npm", "run", strings.TrimPrefix(check.Command, "npm "))
@@ -97,7 +101,13 @@ func Run(ctx context.Context, root string) Result {
 			if len(text) > 1200 {
 				text = text[len(text)-1200:]
 			}
-			result.Failed = append(result.Failed, fmt.Sprintf("%s: %s", check.Command, text))
+			if ctx.Err() != nil {
+				result.Failed = append(result.Failed, fmt.Sprintf("%s: verification stopped: %s", check.Command, ctx.Err()))
+			} else if text == "" {
+				result.Failed = append(result.Failed, fmt.Sprintf("%s: command failed without output (%v)", check.Command, err))
+			} else {
+				result.Failed = append(result.Failed, fmt.Sprintf("%s: %s", check.Command, text))
+			}
 			continue
 		}
 		result.Passed = append(result.Passed, check.Command)
