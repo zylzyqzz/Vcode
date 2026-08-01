@@ -52,6 +52,7 @@ type Task struct {
 	Blackboard  Blackboard      `json:"blackboard,omitempty"`
 	Messages    []AgentMessage  `json:"messages,omitempty"`
 	Agents      []AgentPresence `json:"agents,omitempty"`
+	Checkpoints []Checkpoint    `json:"checkpoints,omitempty"`
 }
 
 type Node struct {
