@@ -163,6 +163,9 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 		} else {
 			result := verify.Run(ctx, workspace)
 			v = &taskgraph.Verification{Status: string(result.Status), Passed: append([]string(nil), result.Passed...), Failed: append([]string(nil), result.Failed...), Skipped: result.Skipped}
+			for _, evidence := range result.Evidence {
+				v.Evidence = append(v.Evidence, taskgraph.CheckEvidence{Name: evidence.Name, Command: evidence.Command, Status: evidence.Status, Output: evidence.Output, DurationMS: evidence.DurationMS})
+			}
 			if len(result.Failed) > 0 {
 				return taskgraph.NodeResult{Workspace: workspace, Verification: v, Err: fmt.Errorf("verification failed: %s", strings.Join(result.Failed, "; "))}
 			}

@@ -93,12 +93,12 @@ func TestRetryableNodeClearsStaleFailureState(t *testing.T) {
 
 func TestNodeSummaryAndIntegrationStatePersist(t *testing.T) {
 	s := NewStore(t.TempDir())
-	task, err := s.Create("persist result", ".", []Node{{ID: "build", Role: Build, Summary: "changed auth.go", Commit: "abc123", Integrated: true, MaxSteps: 100, PromptTokens: 10, OutputTokens: 4, CachedTokens: 8}})
+	task, err := s.Create("persist result", ".", []Node{{ID: "build", Role: Build, Summary: "changed auth.go", Commit: "abc123", Integrated: true, MaxSteps: 100, PromptTokens: 10, OutputTokens: 4, CachedTokens: 8, Verification: &Verification{Status: "PARTIAL", Evidence: []CheckEvidence{{Name: "go test", Command: "go test ./...", Status: "failed", Output: "compile error", DurationMS: 12}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := s.Get(task.ID)
-	if err != nil || loaded.Nodes[0].Summary != "changed auth.go" || !loaded.Nodes[0].Integrated || loaded.Nodes[0].CachedTokens != 8 {
+	if err != nil || loaded.Nodes[0].Summary != "changed auth.go" || !loaded.Nodes[0].Integrated || loaded.Nodes[0].CachedTokens != 8 || len(loaded.Nodes[0].Verification.Evidence) != 1 {
 		t.Fatalf("loaded node=%+v err=%v", loaded.Nodes[0], err)
 	}
 }

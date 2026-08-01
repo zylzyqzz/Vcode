@@ -86,10 +86,19 @@ type Artifact struct {
 }
 
 type Verification struct {
-	Status  string   `json:"status"`
-	Passed  []string `json:"passed,omitempty"`
-	Failed  []string `json:"failed,omitempty"`
-	Skipped string   `json:"skipped,omitempty"`
+	Status   string          `json:"status"`
+	Evidence []CheckEvidence `json:"evidence,omitempty"`
+	Passed   []string        `json:"passed,omitempty"`
+	Failed   []string        `json:"failed,omitempty"`
+	Skipped  string          `json:"skipped,omitempty"`
+}
+
+type CheckEvidence struct {
+	Name       string `json:"name"`
+	Command    string `json:"command"`
+	Status     string `json:"status"`
+	Output     string `json:"output,omitempty"`
+	DurationMS int64  `json:"duration_ms"`
 }
 
 type Event struct {
