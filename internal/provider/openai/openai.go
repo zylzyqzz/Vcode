@@ -628,6 +628,13 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 		}
 
 		delta := sr.Choices[0].Delta
+		// Mark the stream as emitted as soon as a model delta arrives, before
+		// think-tag splitting or tool-call normalization. A connection can reset
+		// immediately after the server flushes a delta; replaying in that window
+		// would duplicate output even if the splitter has not forwarded it yet.
+		if delta.ReasoningContent != "" || delta.Content != "" || len(delta.ToolCalls) > 0 {
+			emitted = true
+		}
 		if delta.ReasoningContent != "" {
 			emitted = true
 			if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkReasoning, Text: delta.ReasoningContent}) {
