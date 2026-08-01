@@ -40,16 +40,18 @@ const (
 )
 
 type Task struct {
-	ID          string     `json:"id"`
-	Goal        string     `json:"goal"`
-	Status      Status     `json:"status"`
-	Outcome     string     `json:"outcome,omitempty"` // VERIFIED|PARTIAL|UNVERIFIED|BLOCKED
-	ProjectRoot string     `json:"project_root"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Nodes       []Node     `json:"nodes"`
-	Events      []Event    `json:"events,omitempty"`
-	Blackboard  Blackboard `json:"blackboard,omitempty"`
+	ID          string          `json:"id"`
+	Goal        string          `json:"goal"`
+	Status      Status          `json:"status"`
+	Outcome     string          `json:"outcome,omitempty"` // VERIFIED|PARTIAL|UNVERIFIED|BLOCKED
+	ProjectRoot string          `json:"project_root"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+	Nodes       []Node          `json:"nodes"`
+	Events      []Event         `json:"events,omitempty"`
+	Blackboard  Blackboard      `json:"blackboard,omitempty"`
+	Messages    []AgentMessage  `json:"messages,omitempty"`
+	Agents      []AgentPresence `json:"agents,omitempty"`
 }
 
 type Node struct {
