@@ -71,6 +71,26 @@ func TestUpdateNodeRecordsLifecycleEvent(t *testing.T) {
 	}
 }
 
+func TestRetryableNodeClearsStaleFailureState(t *testing.T) {
+	s := NewStore(t.TempDir())
+	task, err := s.Create("retry", ".", []Node{{ID: "build", Role: Build}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateNode(&task, "build", Running, "started"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateNode(&task, "build", Failed, "compiler failed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateNode(&task, "build", Pending, "retry scheduled"); err != nil {
+		t.Fatal(err)
+	}
+	if task.Nodes[0].Error != "" || task.Nodes[0].FinishedAt != nil || task.Nodes[0].Status != Pending {
+		t.Fatalf("stale failure state survived retry: %+v", task.Nodes[0])
+	}
+}
+
 func TestNodeSummaryAndIntegrationStatePersist(t *testing.T) {
 	s := NewStore(t.TempDir())
 	task, err := s.Create("persist result", ".", []Node{{ID: "build", Role: Build, Summary: "changed auth.go", Commit: "abc123", Integrated: true, MaxSteps: 100, PromptTokens: 10, OutputTokens: 4, CachedTokens: 8}})

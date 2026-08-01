@@ -299,12 +299,17 @@ func (s *Store) UpdateNode(t *Task, nodeID string, status Status, message string
 		}
 		now := time.Now().UTC()
 		t.Nodes[i].Status = status
-		if message != "" {
+		if status == Failed || status == Cancelled || status == Interrupted {
 			t.Nodes[i].Error = message
+		} else if status == Pending || status == Ready || status == Running || status == Succeeded {
+			t.Nodes[i].Error = ""
 		}
 		if status == Running {
 			t.Nodes[i].Attempt++
 			t.Nodes[i].StartedAt = &now
+		}
+		if status == Pending || status == Ready || status == Running {
+			t.Nodes[i].FinishedAt = nil
 		}
 		if status == Succeeded || status == Failed || status == Cancelled {
 			t.Nodes[i].FinishedAt = &now

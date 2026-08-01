@@ -3,6 +3,7 @@ package taskgraph
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -119,5 +120,24 @@ func TestSchedulerKeepsParallelSuccessWhenSiblingFails(t *testing.T) {
 	}
 	if len(events) < 2 {
 		t.Fatalf("scheduler emitted too few lifecycle events: %v", events)
+	}
+}
+
+func TestSchedulerDoesNotResurrectCancelledTask(t *testing.T) {
+	store := NewStore(t.TempDir())
+	task, err := store.Create("cancelled", ".", []Node{{ID: "build", Role: Build}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetStatus(&task, Cancelled, "operator cancelled"); err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	err = (Scheduler{Store: store}).Run(context.Background(), &task, func(context.Context, Node) NodeResult {
+		runs++
+		return NodeResult{Verification: &Verification{Status: "VERIFIED"}}
+	})
+	if err == nil || !strings.Contains(err.Error(), "cancelled") || runs != 0 || task.Status != Cancelled {
+		t.Fatalf("err=%v runs=%d status=%q", err, runs, task.Status)
 	}
 }

@@ -47,6 +47,9 @@ func (s Scheduler) Run(ctx context.Context, task *Task, runner NodeRunner) error
 	if s.Store == nil {
 		return errors.New("task store is required")
 	}
+	if task.Status == Cancelled {
+		return errors.New("task is cancelled; use a new task or explicit operator recovery")
+	}
 	maxParallel := s.MaxParallel
 	if maxParallel <= 0 {
 		maxParallel = 4
