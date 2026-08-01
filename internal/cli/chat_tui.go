@@ -2135,38 +2135,40 @@ func (m *chatTUI) toggleShellOutput() {
 		m.commitLine(m.transcript[lastIdx])
 	}
 	return
+	/*
 
-	if m.shellExpanded[lastID] {
-		// Collapse back to preview.
-		m.shellExpanded[lastID] = false
-		if total > shellPreviewLines {
-			preview := make([]string, shellPreviewLines+1)
-			for i := 0; i < shellPreviewLines; i++ {
-				preview[i] = dim(clampPlain(lines[i], innerW))
+		if m.shellExpanded[lastID] {
+			// Collapse back to preview.
+			m.shellExpanded[lastID] = false
+			if total > shellPreviewLines {
+				preview := make([]string, shellPreviewLines+1)
+				for i := 0; i < shellPreviewLines; i++ {
+					preview[i] = dim(clampPlain(lines[i], innerW))
+				}
+				preview[shellPreviewLines] = dim(fmt.Sprintf("… %d more lines (Ctrl+B)", total-shellPreviewLines))
+				m.transcript[lastIdx] = connectorBlock(preview)
 			}
-			preview[shellPreviewLines] = dim(fmt.Sprintf("… %d more lines (Ctrl+B)", total-shellPreviewLines))
-			m.transcript[lastIdx] = connectorBlock(preview)
+		} else {
+			// Expand: show up to shellExpandMaxLines lines.
+			m.shellExpanded[lastID] = true
+			show := total
+			if show > shellExpandMaxLines {
+				show = shellExpandMaxLines
+			}
+			rendered := make([]string, show)
+			for i := 0; i < show; i++ {
+				rendered[i] = dim(clampPlain(lines[i], innerW))
+			}
+			if total > shellExpandMaxLines {
+				rendered = append(rendered, dim(fmt.Sprintf("… %d more lines", total-shellExpandMaxLines)))
+			}
+			m.transcript[lastIdx] = connectorBlock(rendered)
 		}
-	} else {
-		// Expand: show up to shellExpandMaxLines lines.
-		m.shellExpanded[lastID] = true
-		show := total
-		if show > shellExpandMaxLines {
-			show = shellExpandMaxLines
+		m.transcriptDirty = true
+		if m.nativeScrollback {
+			m.commitLine(m.transcript[lastIdx])
 		}
-		rendered := make([]string, show)
-		for i := 0; i < show; i++ {
-			rendered[i] = dim(clampPlain(lines[i], innerW))
-		}
-		if total > shellExpandMaxLines {
-			rendered = append(rendered, dim(fmt.Sprintf("… %d more lines", total-shellExpandMaxLines)))
-		}
-		m.transcript[lastIdx] = connectorBlock(rendered)
-	}
-	m.transcriptDirty = true
-	if m.nativeScrollback {
-		m.commitLine(m.transcript[lastIdx])
-	}
+	*/
 }
 
 // toolWorkingFrames is the braille spinner cycled once per second on the
@@ -2942,51 +2944,53 @@ func (m chatTUI) renderTodoPanel() string {
 	// Task progress is intentionally kept internal; the CLI shows only the
 	// unified activity indicator while a task is running.
 	return ""
+	/*
 
-	var p struct {
-		Todos []todoPanelTodo `json:"todos"`
-	}
-	if err := json.Unmarshal([]byte(m.todoArgs), &p); err != nil || len(p.Todos) == 0 {
-		return ""
-	}
-	done := 0
-	for _, t := range p.Todos {
-		if t.Status == "completed" {
-			done++
+		var p struct {
+			Todos []todoPanelTodo `json:"todos"`
 		}
-	}
-	if done == len(p.Todos) {
-		return "" // all finished — clear the panel
-	}
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s %s\n", accent("To-dos"), dim(fmt.Sprintf("%d/%d", done, len(p.Todos))))
-	start, end := todoPanelWindow(p.Todos)
-	if start > 0 {
-		b.WriteString(dim(fmt.Sprintf("  +%d above", start)) + "\n")
-	}
-	for _, t := range p.Todos[start:end] {
-		indent := "  "
-		if t.Level >= 1 {
-			indent = "      " // sub-steps sit under their phase
+		if err := json.Unmarshal([]byte(m.todoArgs), &p); err != nil || len(p.Todos) == 0 {
+			return ""
 		}
-		switch t.Status {
-		case "completed":
-			b.WriteString(indent + green("✔") + " " + dim(t.Content) + "\n")
-		case "in_progress":
-			label := t.Content
-			if t.ActiveForm != "" {
-				label = t.ActiveForm
+		done := 0
+		for _, t := range p.Todos {
+			if t.Status == "completed" {
+				done++
 			}
-			b.WriteString(indent + yellow("▶ "+label) + "\n")
-		default:
-			b.WriteString(indent + dim("○ "+t.Content) + "\n")
 		}
-	}
-	if end < len(p.Todos) {
-		b.WriteString(dim(fmt.Sprintf("  +%d more", len(p.Todos)-end)) + "\n")
-	}
-	return todoPanelStyle.Width(max(m.width, 10)).Render(strings.TrimRight(b.String(), "\n"))
+		if done == len(p.Todos) {
+			return "" // all finished — clear the panel
+		}
+
+		var b strings.Builder
+		fmt.Fprintf(&b, "%s %s\n", accent("To-dos"), dim(fmt.Sprintf("%d/%d", done, len(p.Todos))))
+		start, end := todoPanelWindow(p.Todos)
+		if start > 0 {
+			b.WriteString(dim(fmt.Sprintf("  +%d above", start)) + "\n")
+		}
+		for _, t := range p.Todos[start:end] {
+			indent := "  "
+			if t.Level >= 1 {
+				indent = "      " // sub-steps sit under their phase
+			}
+			switch t.Status {
+			case "completed":
+				b.WriteString(indent + green("✔") + " " + dim(t.Content) + "\n")
+			case "in_progress":
+				label := t.Content
+				if t.ActiveForm != "" {
+					label = t.ActiveForm
+				}
+				b.WriteString(indent + yellow("▶ "+label) + "\n")
+			default:
+				b.WriteString(indent + dim("○ "+t.Content) + "\n")
+			}
+		}
+		if end < len(p.Todos) {
+			b.WriteString(dim(fmt.Sprintf("  +%d more", len(p.Todos)-end)) + "\n")
+		}
+		return todoPanelStyle.Width(max(m.width, 10)).Render(strings.TrimRight(b.String(), "\n"))
+	*/
 }
 
 func todoPanelWindow(todos []todoPanelTodo) (int, int) {

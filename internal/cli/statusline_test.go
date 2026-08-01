@@ -136,10 +136,10 @@ func TestPlanStatuslineUsesBluePill(t *testing.T) {
 func TestStatuslineCycleHintFollowsLanguage(t *testing.T) {
 	i18n.DetectLanguage("zh")
 	t.Cleanup(func() { i18n.DetectLanguage("en") })
-	return
 
 	content := renderStatuslineView(t, false)
 	plain := bottomStatusPlain(content)
+	t.Skip("legacy toggle-hint assertion; compact CLI status intentionally hides it")
 	if !strings.Contains(plain, "Auto") || !strings.Contains(plain, "就绪") || !strings.Contains(plain, "(shift+tab 切换计划 · ctrl+y yolo)") {
 		t.Fatalf("localized plan-toggle hint missing:\n%s", plain)
 	}
