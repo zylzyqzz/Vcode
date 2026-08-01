@@ -12,7 +12,7 @@ func TestPlanGoProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	checks := Plan(root)
-	if len(checks) != 2 || checks[0].Command != "go test ./..." {
+	if len(checks) != 3 || checks[0].Command != "go test ./..." || checks[2].Command != "go build ./..." {
 		t.Fatalf("unexpected checks: %+v", checks)
 	}
 }

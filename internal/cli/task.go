@@ -73,10 +73,10 @@ func taskCommand(args []string) int {
 		return changeTaskState(store, global, args[0], args[1], args[2:])
 	case "run":
 		if len(args) < 2 {
-			fmt.Fprintln(stderr(), "usage: vcode task run <task-id>")
+			fmt.Fprintln(stderr(), "usage: vcode task run <task-id> [--no-verify]")
 			return 2
 		}
-		return runTaskGraph(store, args[1])
+		return runTaskGraph(store, args[1], containsTaskArg(args[2:], "--no-verify"))
 	case "merge", "integrate":
 		if len(args) < 2 {
 			fmt.Fprintln(stderr(), "usage: vcode task merge <task-id> [node-id]")
@@ -89,7 +89,7 @@ func taskCommand(args []string) int {
 	}
 }
 
-func runTaskGraph(store *taskgraph.Store, id string) int {
+func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 	task, err := store.Get(id)
 	if err != nil {
 		fmt.Fprintln(stderr(), "error:", err)
@@ -146,10 +146,17 @@ func runTaskGraph(store *taskgraph.Store, id string) int {
 		if err := ctrl.Run(ctx, prompt); err != nil {
 			return taskgraph.NodeResult{Workspace: workspace, Err: err}
 		}
-		result := verify.Run(ctx, workspace)
-		v := &taskgraph.Verification{Status: string(result.Status), Passed: append([]string(nil), result.Passed...), Failed: append([]string(nil), result.Failed...), Skipped: result.Skipped}
-		if len(result.Failed) > 0 {
-			return taskgraph.NodeResult{Workspace: workspace, Verification: v, Err: fmt.Errorf("verification failed: %s", strings.Join(result.Failed, "; "))}
+		var v *taskgraph.Verification
+		if noVerify {
+			v = &taskgraph.Verification{Status: string(verify.Unverified), Skipped: "verification explicitly disabled with --no-verify"}
+		} else if readOnly {
+			v = &taskgraph.Verification{Status: string(verify.Unverified), Skipped: "read-only role; project verification deferred to build/test"}
+		} else {
+			result := verify.Run(ctx, workspace)
+			v = &taskgraph.Verification{Status: string(result.Status), Passed: append([]string(nil), result.Passed...), Failed: append([]string(nil), result.Failed...), Skipped: result.Skipped}
+			if len(result.Failed) > 0 {
+				return taskgraph.NodeResult{Workspace: workspace, Verification: v, Err: fmt.Errorf("verification failed: %s", strings.Join(result.Failed, "; "))}
+			}
 		}
 		changed, changedErr := worktrees.ChangedFiles(ctx, task.ID, node.ID)
 		if changedErr != nil {
@@ -169,8 +176,21 @@ func runTaskGraph(store *taskgraph.Store, id string) int {
 		fmt.Fprintln(stderr(), "task failed:", err)
 		return 1
 	}
-	fmt.Printf("task %s completed\n", id)
+	if task.Outcome != "VERIFIED" {
+		fmt.Printf("task %s finished with outcome=%s; verification evidence is incomplete\n", id, task.Outcome)
+		return 0
+	}
+	fmt.Printf("task %s completed outcome=VERIFIED\n", id)
 	return 0
+}
+
+func containsTaskArg(args []string, want string) bool {
+	for _, arg := range args {
+		if arg == want {
+			return true
+		}
+	}
+	return false
 }
 
 func planTask(store *taskgraph.Store, global *taskgraph.Index, id string) int {

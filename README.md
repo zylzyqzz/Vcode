@@ -96,6 +96,7 @@ vcode task approve <id>        Approve the plan before any write-capable node
 vcode task resume <id>         Recover interrupted work
 vcode task retry <id> <node>   Retry one failed node
 vcode task run <id>             Execute the task graph through Vcode agents
+vcode task run <id> --no-verify Run explicitly without project checks (`UNVERIFIED`)
 vcode task merge <id> [node]    Integrate committed node work into the project
 ```
 

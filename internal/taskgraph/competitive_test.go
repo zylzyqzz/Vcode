@@ -59,7 +59,7 @@ func TestSchedulerHandlesLongTaskGraph(t *testing.T) {
 	store := NewStore(t.TempDir())
 	nodes := make([]Node, 32)
 	for i := range nodes {
-		nodes[i] = Node{ID: fmt.Sprintf("node-%02d", i), Role: Explore, MaxAttempts: 2}
+		nodes[i] = Node{ID: fmt.Sprintf("node-%02d", i), Role: Build, MaxAttempts: 2}
 		if i > 0 {
 			nodes[i].DependsOn = []string{nodes[i-1].ID}
 		}

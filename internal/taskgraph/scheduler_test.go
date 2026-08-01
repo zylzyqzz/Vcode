@@ -84,3 +84,13 @@ func TestSchedulerAggregatesVerificationOutcome(t *testing.T) {
 		t.Fatalf("outcome = %q", task.Outcome)
 	}
 }
+
+func TestAggregateOutcomeIgnoresReadOnlyResearch(t *testing.T) {
+	task := Task{Nodes: []Node{
+		{ID: "explore", Role: Explore, Verification: &Verification{Status: "UNVERIFIED"}},
+		{ID: "build", Role: Build, Verification: &Verification{Status: "VERIFIED"}},
+	}}
+	if got := aggregateOutcome(task); got != "VERIFIED" {
+		t.Fatalf("outcome=%q, want VERIFIED", got)
+	}
+}

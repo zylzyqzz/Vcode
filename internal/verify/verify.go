@@ -46,7 +46,7 @@ func (r Result) Error() string {
 func Plan(root string) []Check {
 	var checks []Check
 	if fileExists(filepath.Join(root, "go.mod")) {
-		checks = append(checks, Check{"go test", "go test ./..."}, Check{"go vet", "go vet ./..."})
+		checks = append(checks, Check{"go test", "go test ./..."}, Check{"go vet", "go vet ./..."}, Check{"go build", "go build ./..."})
 		return checks
 	}
 	if packageJSON := filepath.Join(root, "package.json"); fileExists(packageJSON) {
