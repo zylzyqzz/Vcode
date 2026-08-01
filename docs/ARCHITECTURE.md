@@ -13,4 +13,6 @@ Writable nodes use `internal/worktree` to create `.vcode/worktrees/<task-id>/<no
 
 `internal/taskgraph.Scheduler` is the durable orchestration boundary: it recovers interrupted nodes, respects dependencies, limits parallelism, retries failures, emits lifecycle events, and converges the task outcome from verification evidence. Role tool allowlists in `agent.roles.<role>.tools` narrow the executor surface for specialized agents without changing the shared MCP/Skills registry.
 
+The default CLI plan starts two independent read-only scouts in parallel (code structure and test/verification coverage), feeds both reports into a Chinese planning role, then passes the persisted summaries into build and verification roles. This is the baseline multi-agent workflow; larger projects can edit the durable graph to add more bounded specialists.
+
 Session transcripts remain the conversation source of truth. Task graphs remain the execution source of truth. A task result must include verification evidence before it can be reported as complete.

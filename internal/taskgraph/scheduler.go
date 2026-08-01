@@ -17,6 +17,7 @@ type NodeResult struct {
 	Workspace    string
 	Commit       string
 	ChangedFiles []string
+	Summary      string
 	Artifacts    []Artifact
 	Verification *Verification
 	Message      string
@@ -124,6 +125,7 @@ func (s Scheduler) applyResult(task *Task, rr nodeRunResult) error {
 			continue
 		}
 		n.ChangedFiles = rr.result.ChangedFiles
+		n.Summary = rr.result.Summary
 		n.Commit = rr.result.Commit
 		n.Artifacts = rr.result.Artifacts
 		n.Verification = rr.result.Verification
@@ -192,6 +194,9 @@ func aggregateOutcome(t Task) string {
 		return "UNVERIFIED"
 	}
 	for _, n := range t.Nodes {
+		if n.Role == Plan || n.Role == Explore || n.Role == Review {
+			continue
+		}
 		if n.Verification == nil || n.Verification.Status == "" || n.Verification.Status == "UNVERIFIED" {
 			return "UNVERIFIED"
 		}
@@ -199,7 +204,12 @@ func aggregateOutcome(t Task) string {
 			return "PARTIAL"
 		}
 	}
-	return "VERIFIED"
+	for _, n := range t.Nodes {
+		if n.Role == Build || n.Role == Test {
+			return "VERIFIED"
+		}
+	}
+	return "UNVERIFIED"
 }
 
 // MarkNodeVerification is a small adapter for role runners that complete their

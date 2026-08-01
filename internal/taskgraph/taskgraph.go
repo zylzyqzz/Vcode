@@ -65,6 +65,7 @@ type Node struct {
 	Workspace    string            `json:"workspace,omitempty"`
 	Commit       string            `json:"commit,omitempty"`
 	ChangedFiles []string          `json:"changed_files,omitempty"`
+	Summary      string            `json:"summary,omitempty"`
 	Artifacts    []Artifact        `json:"artifacts,omitempty"`
 	Verification *Verification     `json:"verification,omitempty"`
 	Error        string            `json:"error,omitempty"`
