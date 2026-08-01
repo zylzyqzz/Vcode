@@ -48,7 +48,8 @@ make cross      # -> dist/（darwin|linux|windows × amd64|arm64）
 ## 快速开始
 
 ```sh
-Vcode setup                      # 配置向导 → ./vcode.toml
+首次运行 Vcode                     # 只输入 DeepSeek API Key，自动配置 flash/pro
+Vcode setup                      # 随时重新运行同一套最简配置引导
 export DEEPSEEK_API_KEY=sk-...      # 也可以让 setup 保存到 Vcode 全局 .env
 Vcode                            # 然后在会话里运行 /init 生成 AGENTS.md（项目记忆）
 Vcode run "把 main.go 里的 TODO 实现掉"

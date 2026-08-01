@@ -75,7 +75,9 @@ export DEEPSEEK_API_KEY=sk-...
 vcode
 ```
 
-For a guided setup, run:
+On the first interactive launch, Vcode asks only for your DeepSeek API key.
+The official `deepseek-v4-flash` and `deepseek-v4-pro` models are configured
+automatically. You can repeat the same minimal wizard at any time:
 
 ```sh
 vcode setup

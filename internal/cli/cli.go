@@ -68,6 +68,9 @@ func Run(args []string, version string) int {
 			i18n.DetectLanguage(cfg.Language)
 		}
 	}
+	if rc := maybeRunFirstRunSetup(cmd); rc != 0 {
+		return rc
+	}
 
 	if len(args) == 0 && cliIsInteractive() {
 		return runInteractiveSession(nil)
@@ -878,13 +881,93 @@ func setupConfig(args []string) int {
 
 	// Interactive wizard on a TTY; fall back to the annotated default when piped.
 	if isInteractive() {
-		rc := interactiveSetup(t.config, t.env)
+		rc := minimalSetup(t.config, t.env)
 		if rc == 0 {
 			fmt.Printf(i18n.M.TryHintFmt+"\n", bold("vcode"))
 		}
 		return rc
 	}
-	return writeDefaultConfig(t.config)
+	return minimalSetup(t.config, t.env)
+}
+
+// maybeRunFirstRunSetup keeps a fresh installation on the shortest useful path.
+// A project or user config means the user has already made a configuration
+// choice, so it must never be replaced automatically. Explicit `vcode setup`
+// remains available for reconfiguration.
+func maybeRunFirstRunSetup(cmd string) int {
+	switch cmd {
+	case "", "run", "chat", "code":
+	default:
+		return 0
+	}
+	if !isInteractive() || config.SourcePath() != "" {
+		return 0
+	}
+	return minimalSetup(defaultConfigTarget(), defaultEnvTarget())
+}
+
+// minimalSetup is the CLI-first onboarding flow. DeepSeek is the supported
+// first-run provider and both official V4 models are available immediately;
+// the only required input is the API key.
+func minimalSetup(configPath, envPath string) int {
+	cfg := config.Default()
+	if _, err := os.Stat(configPath); err == nil {
+		cfg = config.LoadForEdit(configPath)
+	}
+
+	key := strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY"))
+	if key == "" && isInteractive() {
+		fmt.Println()
+		fmt.Println(accent("◆") + " " + bold("Vcode 首次配置"))
+		fmt.Println(dim("只需要输入 DeepSeek API Key，模型已默认配置："))
+		fmt.Println("  " + accent("•") + " deepseek-v4-flash")
+		fmt.Println("  " + accent("•") + " deepseek-v4-pro")
+		fmt.Println()
+		var err error
+		key, err = readAPIKey(os.Stdin, os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "\n"+i18n.M.SetupCancelled)
+			return 1
+		}
+	}
+	if key == "" {
+		fmt.Fprintln(os.Stderr, "DEEPSEEK_API_KEY is required. Run `vcode setup` to configure it.")
+		return 1
+	}
+
+	// A fresh config always uses the two official DeepSeek V4 entries. An
+	// existing config is left intact so setup cannot erase custom providers.
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		cfg = config.Default()
+	}
+	if err := cfg.SaveTo(configPath); err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.WriteConfigErr, err)
+		return 1
+	}
+	if _, err := config.StoreCredentialLines([]string{"DEEPSEEK_API_KEY=" + key}); err != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.WriteEnvErr, err)
+		return 1
+	}
+	fmt.Printf("\n%s DeepSeek 已配置\n", green("✓"))
+	fmt.Printf("%s 模型：deepseek-v4-flash · deepseek-v4-pro\n", dim("✓"))
+	fmt.Printf("%s %s\n", green("✓"), fmt.Sprintf(i18n.M.WroteFileFmt, displayPath(configPath)))
+	return 0
+}
+
+// readAPIKey disables terminal echo while reading a secret. The scanner
+// fallback keeps tests and redirected input deterministic.
+func readAPIKey(r *os.File, w io.Writer) (string, error) {
+	fmt.Fprint(w, "DeepSeek API Key: ")
+	if term.IsTerminal(int(r.Fd())) {
+		key, err := term.ReadPassword(int(r.Fd()))
+		fmt.Fprintln(w)
+		return strings.TrimSpace(string(key)), err
+	}
+	s := bufio.NewScanner(r)
+	if !s.Scan() {
+		return "", s.Err()
+	}
+	return strings.TrimSpace(s.Text()), nil
 }
 
 func confirmReconfigureExistingConfig(path string, in *bufio.Scanner, w io.Writer) bool {
