@@ -8,6 +8,9 @@ branch.
 
 ### Changed
 
+- Added the first durable project task graph under `.vcode/tasks/`, with dependency validation, ready-node discovery, event persistence, interrupted-node recovery, and `vcode task list|create|show` management commands.
+- Added the `.ai/` Project OS context, workflow, rules, task backlog, role prompts, and maintenance reports for AI-native project continuity.
+
 - Agent runtime defaults now leave both executor and dedicated planner tool-call
   rounds unlimited (`max_steps = 0`, `planner_max_steps = 0`). Step limits now
   come from the user/global config only; project `Vcode.toml` does not

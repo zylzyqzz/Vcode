@@ -87,6 +87,10 @@ vcode review                  Review the current worktree
 vcode doctor                  Diagnose configuration, model, tools, and safety
 vcode doctor --json           Print machine-readable diagnostics
 vcode setup                   Create or migrate local configuration
+vcode task list                List durable project tasks
+vcode task show <id>           Show task and node state
+vcode task resume <id>         Recover interrupted work
+vcode task retry <id> <node>   Retry one failed node
 ```
 
 Inside an interactive session:
@@ -116,6 +120,8 @@ Configuration is resolved in this order:
 4. built-in defaults.
 
 See the [CLI guide](./docs/GUIDE.md) for providers, permissions, MCP, Skills, sessions, and configuration paths. Secrets should be supplied through environment variables or the Vcode user `.env` file; do not commit API keys.
+
+Long-running work is stored under `.vcode/tasks/`. Task records preserve node dependencies, lifecycle events, retry state, artifacts, and verification results so another Vcode or AI agent can continue the project without reconstructing the whole task from chat history.
 
 ## Development
 
