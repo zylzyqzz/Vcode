@@ -372,7 +372,30 @@ const maxStreamReconnects = 3
 func (c *client) streamWithReconnect(ctx context.Context, resp *http.Response, newReq func(context.Context) (*http.Request, error), out chan<- provider.Chunk) {
 	defer close(out)
 	for attempt := 0; ; attempt++ {
-		emitted, err := c.readStream(ctx, resp, out)
+		type streamResult struct {
+			emitted bool
+			err     error
+		}
+		result := make(chan streamResult, 1)
+		go func() {
+			emitted, err := c.readStream(ctx, resp, out)
+			result <- streamResult{emitted: emitted, err: err}
+		}()
+		var sr streamResult
+		select {
+		case sr = <-result:
+		case <-ctx.Done():
+			// Do not wait for a platform transport to unblock Scanner. The caller
+			// must observe cancellation immediately; closing the body also gives
+			// the reader and the remote server a chance to release their socket.
+			_ = resp.Body.Close()
+			select {
+			case out <- provider.Chunk{Type: provider.ChunkError, Err: ctx.Err()}:
+			default:
+			}
+			return
+		}
+		emitted, err := sr.emitted, sr.err
 		if err == nil {
 			return
 		}

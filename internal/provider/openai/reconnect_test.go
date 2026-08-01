@@ -53,7 +53,14 @@ func TestStreamReconnectsOnEarlyConnReset(t *testing.T) {
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"recovered\"}}]}\n\n")
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
-	defer srv.Close()
+	defer func() {
+		// Windows transports can keep an idle SSE connection alive after the
+		// response reader has observed context cancellation. Close active test
+		// connections explicitly so the handler's request context is released
+		// before httptest.Server.Close waits for it.
+		srv.CloseClientConnections()
+		srv.Close()
+	}()
 
 	p, err := New(provider.Config{Name: "deepseek", BaseURL: srv.URL, Model: "deepseek-v4", APIKey: "k"})
 	if err != nil {
@@ -92,9 +99,17 @@ func TestStreamCancelDoesNotReconnect(t *testing.T) {
 		if first {
 			close(ready)
 		}
-		<-r.Context().Done()
+		select {
+		case <-r.Context().Done():
+		case <-time.After(500 * time.Millisecond):
+			// The assertion is about client-side reconnect behavior; do not let
+			// a platform transport keep httptest.Server.Close blocked forever.
+		}
 	}))
-	defer srv.Close()
+	defer func() {
+		srv.CloseClientConnections()
+		srv.Close()
+	}()
 
 	p, err := New(provider.Config{Name: "deepseek", BaseURL: srv.URL, Model: "deepseek-v4", APIKey: "k"})
 	if err != nil {
