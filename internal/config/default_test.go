@@ -45,6 +45,19 @@ func TestAgentRoleFallsBackToLegacyFields(t *testing.T) {
 	}
 }
 
+func TestAgentRoleToolsReturnsCopy(t *testing.T) {
+	cfg := Default()
+	cfg.Agent.Roles = map[string]AgentRoleConfig{"build": {Tools: []string{"read_file", "patch"}}}
+	got := cfg.AgentRoleTools("build")
+	got[0] = "changed"
+	if cfg.Agent.Roles["build"].Tools[0] != "read_file" {
+		t.Fatal("role tool list was not copied")
+	}
+	if len(cfg.AgentRoleTools("missing")) != 0 {
+		t.Fatal("missing role should have no tool allowlist")
+	}
+}
+
 func TestDefaultDesktopAppearanceAutoGraphite(t *testing.T) {
 	cfg := Default()
 	if got := cfg.DesktopTheme(); got != "auto" {

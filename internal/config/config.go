@@ -1019,6 +1019,13 @@ func (c *Config) AgentRoleEffort(name, fallback string) string {
 	return strings.TrimSpace(fallback)
 }
 
+// AgentRoleTools returns a defensive copy of the optional role tool allowlist.
+// An empty list means the role inherits the normal lazy-loaded tool surface.
+func (c *Config) AgentRoleTools(name string) []string {
+	tools := c.AgentRole(name).Tools
+	return append([]string(nil), tools...)
+}
+
 // MemoryCompilerConfig controls the v5 execution-memory compiler.
 type MemoryCompilerConfig struct {
 	Enabled   *bool  `toml:"enabled"`

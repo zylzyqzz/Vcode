@@ -1002,19 +1002,8 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	// A role may narrow the model-visible tool surface without changing the
 	// shared registry used by MCP connectors and read-only child runners.
 	executorReg := reg
-	if names := cfg.AgentRole(opts.Role).Tools; len(names) > 0 {
-		executorReg = tool.NewRegistry()
-		allowed := make(map[string]struct{}, len(names))
-		for _, name := range names {
-			allowed[strings.TrimSpace(name)] = struct{}{}
-		}
-		for _, name := range reg.Names() {
-			if _, ok := allowed[name]; ok {
-				if t, exists := reg.Get(name); exists {
-					executorReg.Add(t)
-				}
-			}
-		}
+	if names := cfg.AgentRoleTools(opts.Role); len(names) > 0 {
+		executorReg = filterRegistry(reg, names)
 	}
 
 	execSess := agent.NewSession(sysPrompt)
@@ -1169,6 +1158,25 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		ctrlOpts.Classifier = classifier
 	}
 	return control.New(ctrlOpts), nil
+}
+
+func filterRegistry(reg *tool.Registry, names []string) *tool.Registry {
+	filtered := tool.NewRegistry()
+	allowed := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if name = strings.TrimSpace(name); name != "" {
+			allowed[name] = struct{}{}
+		}
+	}
+	for _, name := range reg.Names() {
+		if _, ok := allowed[name]; !ok {
+			continue
+		}
+		if t, exists := reg.Get(name); exists {
+			filtered.Add(t)
+		}
+	}
+	return filtered
 }
 
 func rememberPermissionRule(workspaceRoot, rule string) control.RememberResult {
