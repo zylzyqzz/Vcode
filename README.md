@@ -91,6 +91,8 @@ vcode task list                List durable project tasks
 vcode task global              List tasks across projects
 vcode task show <id>           Show task and node state (`--json` supported)
 vcode task logs <id>           Show task lifecycle events
+vcode task plan <id>           Generate a Chinese read-only execution plan
+vcode task approve <id>        Approve the plan before any write-capable node
 vcode task resume <id>         Recover interrupted work
 vcode task retry <id> <node>   Retry one failed node
 vcode task run <id>             Execute the task graph through Vcode agents

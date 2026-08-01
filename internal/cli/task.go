@@ -53,6 +53,18 @@ func taskCommand(args []string) int {
 		fmt.Printf("created task %s\n", t.ID)
 		_ = global.Upsert(t)
 		return 0
+	case "plan":
+		if len(args) < 2 {
+			fmt.Fprintln(stderr(), "usage: vcode task plan <task-id>")
+			return 2
+		}
+		return planTask(store, global, args[1])
+	case "approve":
+		if len(args) < 2 {
+			fmt.Fprintln(stderr(), "usage: vcode task approve <task-id>")
+			return 2
+		}
+		return approveTask(store, global, args[1])
 	case "resume", "retry", "pause", "cancel":
 		if len(args) < 2 {
 			fmt.Fprintln(stderr(), "usage: vcode task resume|retry|pause|cancel <task-id> [node-id]")
@@ -72,7 +84,7 @@ func taskCommand(args []string) int {
 		}
 		return mergeTaskNode(store, global, args[1], args[2:])
 	default:
-		fmt.Fprintln(stderr(), "usage: vcode task [list|show|create|resume|retry|pause|cancel|run|merge]")
+		fmt.Fprintln(stderr(), "usage: vcode task [list|show|create|plan|approve|resume|retry|pause|cancel|run|merge]")
 		return 2
 	}
 }
@@ -85,6 +97,10 @@ func runTaskGraph(store *taskgraph.Store, id string) int {
 	}
 	if len(task.Nodes) == 0 {
 		fmt.Fprintln(stderr(), "error: task has no nodes; create a plan before running it")
+		return 1
+	}
+	if task.Status == taskgraph.Blocked {
+		fmt.Fprintln(stderr(), "task is awaiting approval; run `vcode task approve", id+"` first")
 		return 1
 	}
 	ctx := context.Background()
@@ -155,6 +171,58 @@ func runTaskGraph(store *taskgraph.Store, id string) int {
 	}
 	fmt.Printf("task %s completed\n", id)
 	return 0
+}
+
+func planTask(store *taskgraph.Store, global *taskgraph.Index, id string) int {
+	task, err := store.Get(id)
+	if err != nil {
+		fmt.Fprintln(stderr(), "error:", err)
+		return 1
+	}
+	if len(task.Nodes) == 0 {
+		task.Nodes = defaultTaskNodes(task.Goal)
+	}
+	task.Status = taskgraph.Blocked
+	if err := store.Save(task); err != nil {
+		fmt.Fprintln(stderr(), "error:", err)
+		return 1
+	}
+	_ = store.AppendEvent(&task, taskgraph.Event{Type: "plan_ready", Message: "中文执行计划已生成，等待批准"})
+	_ = global.Upsert(task)
+	fmt.Printf("任务 %s 规划完成（中文、只读阶段），批准后执行：\n", id)
+	for i, node := range task.Nodes {
+		fmt.Printf("%d. %s：%s\n", i+1, node.Title, node.Prompt)
+	}
+	fmt.Printf("使用 `vcode task approve %s` 开始执行。\n", id)
+	return 0
+}
+
+func approveTask(store *taskgraph.Store, global *taskgraph.Index, id string) int {
+	task, err := store.Get(id)
+	if err != nil {
+		fmt.Fprintln(stderr(), "error:", err)
+		return 1
+	}
+	if len(task.Nodes) == 0 {
+		fmt.Fprintln(stderr(), "error: task has no plan; run `vcode task plan", id+"` first")
+		return 1
+	}
+	if err := store.SetStatus(&task, taskgraph.Ready, "operator approved execution plan"); err != nil {
+		fmt.Fprintln(stderr(), "error:", err)
+		return 1
+	}
+	_ = global.Upsert(task)
+	fmt.Printf("任务 %s 已批准，可以运行。\n", id)
+	return 0
+}
+
+func defaultTaskNodes(goal string) []taskgraph.Node {
+	return []taskgraph.Node{
+		{ID: "explore", Title: "探索项目现状", Role: taskgraph.Explore, Prompt: fmt.Sprintf("用只读方式分析项目结构、相关文件、现有约束和当前实现，围绕目标“%s”列出事实、风险与需要修改的范围。不得写入文件。", goal)},
+		{ID: "plan", Title: "制定中文实施计划", Role: taskgraph.Plan, DependsOn: []string{"explore"}, Prompt: fmt.Sprintf("根据探索结果，用中文说明要解决的问题、最终目标、涉及模块和文件；拆成 2—6 个可验证步骤，并为每步写明动作、原因和验证方式。不得写入文件。目标：%s", goal)},
+		{ID: "build", Title: "实现目标并保持最小改动", Role: taskgraph.Build, DependsOn: []string{"plan"}, Prompt: fmt.Sprintf("按已确认的中文计划实现目标“%s”。只修改必要文件，保留兼容性，完成后列出变更文件、风险和可复现验证命令。", goal)},
+		{ID: "verify", Title: "验证实现并汇总证据", Role: taskgraph.Test, DependsOn: []string{"build"}, Prompt: fmt.Sprintf("针对目标“%s”执行项目已有的测试、构建、静态检查和必要 smoke test；不要声称未执行的检查成功，按 VERIFIED、PARTIAL 或 UNVERIFIED 汇总证据。", goal)},
+	}
 }
 
 func mergeTaskNode(store *taskgraph.Store, global *taskgraph.Index, id string, args []string) int {
