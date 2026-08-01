@@ -40,15 +40,16 @@ const (
 )
 
 type Task struct {
-	ID          string    `json:"id"`
-	Goal        string    `json:"goal"`
-	Status      Status    `json:"status"`
-	Outcome     string    `json:"outcome,omitempty"` // VERIFIED|PARTIAL|UNVERIFIED|BLOCKED
-	ProjectRoot string    `json:"project_root"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	Nodes       []Node    `json:"nodes"`
-	Events      []Event   `json:"events,omitempty"`
+	ID          string     `json:"id"`
+	Goal        string     `json:"goal"`
+	Status      Status     `json:"status"`
+	Outcome     string     `json:"outcome,omitempty"` // VERIFIED|PARTIAL|UNVERIFIED|BLOCKED
+	ProjectRoot string     `json:"project_root"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	Nodes       []Node     `json:"nodes"`
+	Events      []Event    `json:"events,omitempty"`
+	Blackboard  Blackboard `json:"blackboard,omitempty"`
 }
 
 type Node struct {
@@ -103,12 +104,15 @@ type CheckEvidence struct {
 }
 
 type Event struct {
-	Type      string    `json:"type"`
-	TaskID    string    `json:"task_id"`
-	NodeID    string    `json:"node_id,omitempty"`
-	Role      Role      `json:"role,omitempty"`
-	Message   string    `json:"message,omitempty"`
-	Timestamp time.Time `json:"timestamp"`
+	Type      string            `json:"type"`
+	TaskID    string            `json:"task_id"`
+	NodeID    string            `json:"node_id,omitempty"`
+	Role      Role              `json:"role,omitempty"`
+	AgentID   string            `json:"agent_id,omitempty"`
+	ParentID  string            `json:"parent_id,omitempty"`
+	Message   string            `json:"message,omitempty"`
+	Data      map[string]string `json:"data,omitempty"`
+	Timestamp time.Time         `json:"timestamp"`
 }
 
 type Store struct {
