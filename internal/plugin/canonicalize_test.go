@@ -129,6 +129,27 @@ func TestSummarizeFailureErrorSingleLine(t *testing.T) {
 	}
 }
 
+func TestClassifyFailureProvidesActionableCode(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"timeout", context.DeadlineExceeded, "timeout"},
+		{"cancelled", context.Canceled, "cancelled"},
+		{"auth", errors.New("http 401 unauthorized"), "auth"},
+		{"transport", errors.New("connection refused"), "transport"},
+		{"protocol", errors.New("decode tools/list response"), "protocol"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := classifyFailure(tc.err); got != tc.want {
+				t.Fatalf("classifyFailure(%v)=%q, want %q", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
 type testTool struct{ name string }
 
 func (t testTool) Name() string                                                      { return t.name }
