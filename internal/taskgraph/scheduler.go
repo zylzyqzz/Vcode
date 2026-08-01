@@ -15,6 +15,7 @@ type NodeRunner func(context.Context, Node) NodeResult
 
 type NodeResult struct {
 	Workspace    string
+	SessionPath  string
 	Commit       string
 	ChangedFiles []string
 	Summary      string
@@ -136,6 +137,7 @@ func (s Scheduler) applyResult(task *Task, rr nodeRunResult) error {
 		n.OutputTokens = rr.result.OutputTokens
 		n.CachedTokens = rr.result.CachedTokens
 		n.Commit = rr.result.Commit
+		n.SessionPath = rr.result.SessionPath
 		n.Artifacts = rr.result.Artifacts
 		n.Verification = rr.result.Verification
 		n.Error = ""

@@ -132,10 +132,17 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 			prompt += "\n\nReports from completed dependent roles:\n" + prior
 		}
 		workspace := node.Workspace
+		sessionPath := node.SessionPath
+		if sessionPath == "" {
+			sessionPath = agent.NewSessionPath(resolveCLISessionDir(), "task-"+task.ID+"-"+node.ID)
+		}
+		resultBase := func(v *taskgraph.Verification, runErr error) taskgraph.NodeResult {
+			return taskgraph.NodeResult{Workspace: workspace, SessionPath: sessionPath, Verification: v, Err: runErr}
+		}
 		if node.Role == taskgraph.Build {
 			created, createErr := worktrees.Create(ctx, task.ID, node.ID)
 			if createErr != nil {
-				return taskgraph.NodeResult{Err: createErr}
+				return resultBase(nil, createErr)
 			}
 			workspace = created
 		}
@@ -144,16 +151,23 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 		}
 		ctrl, setupErr := setupWithWorkspaceRole(ctx, node.Model, node.MaxSteps, true, sink, workspace, role)
 		if setupErr != nil {
-			return taskgraph.NodeResult{Err: setupErr}
+			return resultBase(nil, setupErr)
 		}
 		defer ctrl.Close()
+		if loaded, loadErr := agent.LoadSession(sessionPath); loadErr == nil {
+			ctrl.Resume(loaded, sessionPath)
+		} else if !os.IsNotExist(loadErr) {
+			return resultBase(nil, fmt.Errorf("load node session: %w", loadErr))
+		} else {
+			ctrl.SetSessionPath(sessionPath)
+		}
 		readOnly := node.Role == taskgraph.Plan || node.Role == taskgraph.Explore || node.Role == taskgraph.Review
 		ctrl.SetPlanMode(readOnly)
 		if !readOnly {
 			ctrl.SetAutoApproveTools(true)
 		}
 		if err := ctrl.Run(ctx, prompt); err != nil {
-			return taskgraph.NodeResult{Workspace: workspace, Err: err}
+			return resultBase(nil, err)
 		}
 		var v *taskgraph.Verification
 		if noVerify {
@@ -167,21 +181,27 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 				v.Evidence = append(v.Evidence, taskgraph.CheckEvidence{Name: evidence.Name, Command: evidence.Command, Status: evidence.Status, Output: evidence.Output, DurationMS: evidence.DurationMS})
 			}
 			if len(result.Failed) > 0 {
-				return taskgraph.NodeResult{Workspace: workspace, Verification: v, Err: fmt.Errorf("verification failed: %s", strings.Join(result.Failed, "; "))}
+				return resultBase(v, fmt.Errorf("verification failed: %s", strings.Join(result.Failed, "; ")))
 			}
 		}
 		changed, changedErr := worktrees.ChangedFiles(ctx, task.ID, node.ID)
 		if changedErr != nil {
-			return taskgraph.NodeResult{Workspace: workspace, Verification: v, Err: changedErr}
+			return resultBase(v, changedErr)
 		}
 		commit := ""
 		if node.Role == taskgraph.Build && len(changed) > 0 {
 			commit, changedErr = worktrees.Commit(ctx, task.ID, node.ID, fmt.Sprintf("vcode task %s build %s", task.ID, node.ID))
 			if changedErr != nil {
-				return taskgraph.NodeResult{Workspace: workspace, ChangedFiles: changed, Verification: v, Err: changedErr}
+				result := resultBase(v, changedErr)
+				result.ChangedFiles = changed
+				return result
 			}
 		}
-		result := taskgraph.NodeResult{Workspace: workspace, Commit: commit, ChangedFiles: changed, Summary: lastAssistantSummary(ctrl.History()), Verification: v, Message: "agent completed and project verification passed"}
+		result := resultBase(v, nil)
+		result.Commit = commit
+		result.ChangedFiles = changed
+		result.Summary = lastAssistantSummary(ctrl.History())
+		result.Message = "agent completed and project verification passed"
 		if usage := ctrl.LastUsage(); usage != nil {
 			result.PromptTokens = usage.PromptTokens
 			result.OutputTokens = usage.CompletionTokens

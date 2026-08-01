@@ -64,6 +64,7 @@ type Node struct {
 	Model        string            `json:"model,omitempty"`
 	Effort       string            `json:"effort,omitempty"`
 	Workspace    string            `json:"workspace,omitempty"`
+	SessionPath  string            `json:"session_path,omitempty"`
 	Commit       string            `json:"commit,omitempty"`
 	Integrated   bool              `json:"integrated,omitempty"`
 	ChangedFiles []string          `json:"changed_files,omitempty"`
