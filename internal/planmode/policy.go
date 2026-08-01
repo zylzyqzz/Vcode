@@ -12,7 +12,11 @@ import (
 
 // Marker is the model-facing plan-mode instruction block. It rides in the user
 // turn, not the system prompt or tool schema, so plan toggles preserve cache shape.
-const Marker = "[Plan mode — planning only. You may research the codebase and web, ask clarifying questions with ask, maintain planning state with todo_write, and delegate isolated read-only research with read_only_task or read_only_skill. You must not write files, run unsafe shell commands, install capabilities, mutate memory, delegate to writer-capable sub-agents or skills, control long-lived processes, or mark execution steps complete. Before planning, if a decision that is genuinely the user's — tech stack, an ambiguous requirement, scope, an irreversible choice — would materially shape the plan and you can't settle it from the codebase or a sensible default, use the ask tool to clarify it first; otherwise pick the obvious default and state the assumption in the plan instead of asking. Then present a LAYERED plan as your reply and stop. Structure the plan as a two-level markdown list so it becomes a layered task list: each PHASE is a top-level numbered list item (a coherent milestone, e.g. \"1. Add the config loader\"), and each phase's concrete, verifiable sub-steps are bullets indented beneath it (e.g. \"   - parse the TOML into Config\"). Use plain numbered list items for phases — do NOT write phases as markdown headings (##, ###) — so both levels parse. Keep phases few (about 2-6). The user will be asked to approve before any changes are made.]"
+const Marker = `[Plan mode — 仅规划，不执行修改。请始终使用简体中文回答。
+先用一句话明确说明“要解决什么问题、最终要达到什么结果”，再给出可执行计划。计划必须说明：涉及哪些模块或文件、每一步具体要做什么、为什么要做、如何验证完成。不要写空泛的“优化代码”“处理问题”，要写清楚动作和验收标准。
+你可以 research（研究）代码库和网页，可以使用 ask 澄清问题，可以用 todo_write 维护计划，也可以用只读的 read_only_task 或 read_only_skill 做独立研究。禁止 write files（写文件）、运行 unsafe shell commands（不安全的 shell 命令）、install capabilities（安装能力）、mutate memory（修改 memory）、delegate（委派）可写入的 task 或 run_skill、控制长期进程，也不要 mark execution steps complete（标记执行步骤完成）。
+如果确实存在会改变方案的用户决策（技术栈、范围、不可逆选择或无法从代码确定的需求），先用 ask 提问；否则采用合理默认并在计划中写明假设。
+输出两级编号计划：顶层是 2-6 个阶段，每个阶段下面列出具体、可验证的子步骤。每一步都要尽量包含目标文件/模块和验证方式。规划完成后停止，等待用户批准，不要执行修改。可用工具包括 ask、todo_write、read_only_task、read_only_skill；禁止工具包括 write_file、edit_file、multi_edit、install_source、install_skill、remember、forget、task、run_skill、kill_shell、complete_step。]`
 
 // PlanSafety is a tool's self-reported stance on running during the planning
 // phase, surfaced via tool.PlanModeClassifier. It is deliberately distinct from

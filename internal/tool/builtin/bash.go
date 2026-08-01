@@ -150,6 +150,11 @@ func (b bash) Execute(ctx context.Context, args json.RawMessage) (string, error)
 			"Sequence with ';' (both run regardless of the first's result), use 'if ($?) { ... }' for " +
 			"conditional chaining, or issue the commands as separate calls")
 	}
+	if b.sb.Mode == "auto" && !sandbox.Available() {
+		if err := sandbox.CheckFallbackCommand(p.Command); err != nil {
+			return "", err
+		}
+	}
 
 	// Wrap in the OS sandbox when configured; otherwise argv is just the shell.
 	argv, wrapped := sandbox.Command(b.sb, sh, p.Command)

@@ -44,6 +44,7 @@ func LoadForRoot(root string) (*Config, error) {
 		if err := mergeRuntimeTOMLFile(cfg, uc); err != nil {
 			return nil, err
 		}
+		backfillLegacyMemoryDefault(cfg, uc)
 	}
 	globalMaxSteps := cfg.Agent.MaxSteps
 	globalPlannerMaxSteps := cfg.Agent.PlannerMaxSteps
@@ -114,6 +115,28 @@ func LoadForRoot(root string) (*Config, error) {
 	cfg.setExpansionEnv(expansionEnv)
 	resolveProviderCredentialsForRoot(root, cfg)
 	return cfg, nil
+}
+
+// backfillLegacyMemoryDefault preserves the pre-CLI-first behavior for an old
+// user config that never mentioned Memory v5. New configs are written with
+// config_version 4 and an explicit disabled value, so this migration is
+// repeatable and does not override an explicit opt-out.
+func backfillLegacyMemoryDefault(c *Config, path string) {
+	if c == nil || c.Agent.MemoryCompiler.Enabled != nil {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || strings.Contains(string(data), "memory_compiler") {
+		return
+	}
+	var meta struct {
+		ConfigVersion int `toml:"config_version"`
+	}
+	if _, err := toml.Decode(string(data), &meta); err != nil || meta.ConfigVersion >= 4 {
+		return
+	}
+	enabled := true
+	c.Agent.MemoryCompiler.Enabled = &enabled
 }
 
 func (c *Config) setExpansionEnv(env map[string]string) {
@@ -404,6 +427,7 @@ func loadForEditStrict(path string, loadCredentials bool) (*Config, error) {
 	if err := mergeFile(cfg, path); err != nil {
 		return nil, err
 	}
+	backfillLegacyMemoryDefault(cfg, path)
 	migratedMimo := normalizeConfigForEdit(cfg)
 	if migratedMimo && strings.TrimSpace(path) != "" {
 		if _, err := os.Stat(path); err == nil {

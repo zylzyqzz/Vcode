@@ -482,8 +482,10 @@ itself jailed by default when an OS sandbox is available (`[sandbox] bash`,
 Seatbelt on macOS and bubblewrap on Linux): commands may write only those same
 roots (plus temp and toolchain caches), cannot read configured `forbid_read`
 roots while the OS sandbox is active, and reach the network only when
-`[sandbox] network` is set. When no OS sandbox is available, `bash = "enforce"`
-refuses bash execution instead of running unconfined (see
+`[sandbox] network` is set. When no OS sandbox is available, `bash = "auto"`
+keeps the CLI usable with permission-gated execution and a degraded-security
+warning. Use `bash = "enforce"` to refuse execution instead of running without
+an OS jail (see
 [`SPEC.md` §9](./SPEC.md#9-roadmap-not-in-current-scope) for the escape-prompt and
 broader OS support still to come).
 
@@ -594,7 +596,8 @@ Guardian review cannot answer for the user; non-interactive runs refuse these
 tools instead of auto-approving them.
 Retrieval keeps the top BM25 result while trimming weak common-word matches, and
 0-result responses suggest narrower, more distinctive follow-up searches.
-Memory v5 is enabled by default across the CLI/TUI, `Vcode serve`, and the
+Memory v5 is opt-in in the CLI/TUI and can be enabled with `vcode config memory-v5`
+or `/memory-v5`; it remains available to `Vcode serve` and the
 desktop app because they all share the same local controller. It records local,
 project-scoped execution traces and compiler state under Vcode home, then
 compiles the next user turn into a compact execution contract only when prior

@@ -242,7 +242,10 @@ func (m chatTUI) renderChooser() string {
 	}
 	b.WriteString(rowLine(c.cursor == typeRow, typeRow+1, "", typeLabel, c.typing && c.custom[c.tab] == "") + "\n")
 	// Chat about this
-	b.WriteString(dim(strings.Repeat("─", min(w-2, 40))) + "\n")
+	// Keep the free-form row visually separate without drawing a second
+	// container border. The chooser already has its own top/bottom frame; a
+	// full-width rule here reads like a broken input box in compact terminals.
+	b.WriteString("\n")
 	chatRow := typeRow + 1
 	b.WriteString(rowLine(c.cursor == chatRow, chatRow+1, "", i18n.M.AskChatInstead, false))
 

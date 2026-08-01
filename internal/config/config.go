@@ -837,9 +837,9 @@ type SandboxConfig struct {
 	WorkspaceRoot string   `toml:"workspace_root"`
 	AllowWrite    []string `toml:"allow_write"`
 	ForbidRead    []string `toml:"forbid_read"`
-	// Bash is the OS-sandbox mode for the bash tool: "enforce" (default) jails
-	// each command when an OS sandbox is available and refuses bash otherwise;
-	// "off" runs it unconfined.
+	// Bash is the OS-sandbox mode for the bash tool: "auto" uses an OS sandbox
+	// when available and otherwise applies the CLI permission policy;
+	// "enforce" refuses bash without an OS sandbox; "off" runs it unconfined.
 	Bash string `toml:"bash"`
 	// Network allows network egress from inside the bash sandbox. Defaults true
 	// so module/package downloads keep working; the boundary is then writes.
@@ -910,14 +910,20 @@ func (c *Config) ForbidReadRootsForRoot(fallbackRoot string) []string {
 	return roots
 }
 
-// BashMode normalises the bash-sandbox mode: only an explicit "off" disables
-// it; empty or any other value resolves to "enforce", so the sandbox is on by
-// default and fails safe.
+// BashMode normalises the bash-sandbox mode. New installs default to "auto" so
+// the CLI remains usable on Windows, while an explicit "enforce" continues to
+// fail closed when no OS sandbox is available.
 func (c *Config) BashMode() string {
-	if c.Sandbox.Bash == "off" {
+	switch strings.ToLower(strings.TrimSpace(c.Sandbox.Bash)) {
+	case "off":
 		return "off"
+	case "enforce":
+		return "enforce"
+	case "auto", "":
+		return "auto"
+	default:
+		return "auto"
 	}
-	return "enforce"
 }
 
 // AgentConfig configures the harness loop. PlannerModel is optional: when set
@@ -974,9 +980,9 @@ type AgentConfig struct {
 	// may treat as read-only. Shell operators, background execution, and shell
 	// interpreter prefixes remain blocked.
 	PlanModeReadOnlyCommands []string `toml:"plan_mode_read_only_commands"`
-	// MemoryCompiler controls the v5 execution-memory compiler. Missing configs
-	// default to enabled so users get the self-improving planner unless they opt
-	// out explicitly.
+	// MemoryCompiler controls the v5 execution-memory compiler. Missing new
+	// configs default to disabled for the fast CLI profile; legacy user configs
+	// are backfilled by LoadForRoot when they predate this setting.
 	MemoryCompiler MemoryCompilerConfig `toml:"memory_compiler"`
 }
 
@@ -992,10 +998,11 @@ const (
 )
 
 // MemoryCompilerEnabled reports whether the v5 execution-memory compiler should
-// participate in future turns. Missing config defaults to true.
+// participate in future turns. Missing config defaults to false for the
+// low-latency CLI profile.
 func (c *Config) MemoryCompilerEnabled() bool {
 	if c == nil || c.Agent.MemoryCompiler.Enabled == nil {
-		return true
+		return false
 	}
 	return *c.Agent.MemoryCompiler.Enabled
 }
@@ -1460,7 +1467,7 @@ const LanguagePolicy = `Reply in the same language the user is using in their mo
 // Default returns the built-in default configuration.
 func Default() *Config {
 	return &Config{
-		ConfigVersion:    3,
+		ConfigVersion:    4,
 		DefaultModel:     "deepseek-flash",
 		CredentialsStore: CredentialsStoreAuto,
 		UI:               UIConfig{Theme: "auto"},
@@ -1493,7 +1500,7 @@ func Default() *Config {
 		// builds/downloads work. Set bash = "off" to disable. Network=true here
 		// so an absent [sandbox] in a user's file keeps egress (zero value would
 		// wrongly deny it).
-		Sandbox: SandboxConfig{Bash: "enforce", Network: true},
+		Sandbox: SandboxConfig{Bash: "auto", Network: true},
 		// LSP tools on by default, but dormant until a language server is on PATH;
 		// a missing server yields an install hint rather than an error.
 		LSP:     LSPConfig{Enabled: true},

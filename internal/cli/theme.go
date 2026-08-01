@@ -51,20 +51,20 @@ var (
 	cliDarkTheme = cliPalette{
 		name:         "dark",
 		style:        "graphite",
-		accent:       cliColor{"#d97757", 173},
-		muted:        cliColor{"#c0c4cc", 251},
-		faint:        cliColor{"#858b96", 245},
+		accent:       cliColor{"#b8860b", 136},
+		muted:        cliColor{"#d8cda8", 187},
+		faint:        cliColor{"#93886f", 101},
 		success:      cliColor{"#74b87a", 108},
-		warn:         cliColor{"#d9a441", 179},
+		warn:         cliColor{"#c49a3a", 178},
 		err:          cliColor{"#e0696a", 167},
 		danger:       cliColor{"#e5484d", 167},
-		border:       cliColor{"#343945", 237},
-		selection:    cliColor{"#d97757", 173},
-		userBubbleBG: cliColor{"#222631", 235},
+		border:       cliColor{"#4b402b", 238},
+		selection:    cliColor{"#b8860b", 136},
+		userBubbleBG: cliColor{"#2a2418", 234},
 		diffAddBG:    cliColor{"#14351d", 22},
 		diffDelBG:    cliColor{"#3a1619", 52},
-		toolRead:     cliColor{"#56b6c2", 80},
-		toolProc:     cliColor{"#c678dd", 176},
+		toolRead:     cliColor{"#c49a3a", 178},
+		toolProc:     cliColor{"#a98236", 136},
 	}
 	cliLightTheme = cliPalette{
 		name:         "light",
@@ -85,7 +85,7 @@ var (
 		toolProc:     cliColor{"#8a6bb8", 97},
 	}
 	cliThemeStyles = []cliThemeStyle{
-		{name: "graphite", mode: "dark", accent: cliColor{"#d97757", 173}, description: "warm clay accent"},
+		{name: "graphite", mode: "dark", accent: cliColor{"#b8860b", 136}, description: "dark gold accent"},
 		{name: "ember", mode: "dark", accent: cliColor{"#f06d38", 209}, description: "hot orange accent"},
 		{name: "aurora", mode: "dark", accent: cliColor{"#34c3a6", 79}, description: "cool teal accent"},
 		{name: "midnight", mode: "dark", accent: cliColor{"#b18cff", 141}, description: "quiet violet accent"},

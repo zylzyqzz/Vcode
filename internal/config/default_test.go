@@ -14,13 +14,19 @@ func TestDefaultReasoningLanguageAuto(t *testing.T) {
 	}
 }
 
-func TestDefaultMemoryCompilerEnabled(t *testing.T) {
+func TestDefaultMemoryCompilerDisabled(t *testing.T) {
 	cfg := Default()
-	if !cfg.MemoryCompilerEnabled() {
-		t.Fatal("default memory compiler = false, want true")
+	if cfg.MemoryCompilerEnabled() {
+		t.Fatal("default memory compiler = true, want false")
 	}
 	if got := cfg.MemoryCompilerVerbosity(); got != MemoryCompilerVerbosityObserve {
 		t.Fatalf("default memory compiler verbosity = %q, want observe", got)
+	}
+}
+
+func TestDefaultBashModeAuto(t *testing.T) {
+	if got := Default().BashMode(); got != "auto" {
+		t.Fatalf("default bash mode = %q, want auto", got)
 	}
 }
 

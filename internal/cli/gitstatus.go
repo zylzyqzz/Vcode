@@ -127,7 +127,7 @@ func (m chatTUI) gitTag() string {
 var (
 	statusAutoColor  = cliColor{"#b8860b", 214}
 	statusPlanColor  = cliColor{"#FFD700", 220}
-	statusGoalColor  = cliColor{"#10b981", 42}  // green — goal mode indicator
+	statusGoalColor  = cliColor{"#10b981", 42} // green — goal mode indicator
 	statusYoloColor  = cliColor{"#FFD700", 220}
 	statusShellColor = cliColor{"#b8860b", 214} // gold — shell mode indicator
 )

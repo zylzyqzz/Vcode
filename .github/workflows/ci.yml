@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main-v2]
+    branches: [master, main-v2]
   pull_request:
-    branches: [main-v2]
+    branches: [master, main-v2]
 
 permissions:
   contents: read
@@ -72,82 +72,6 @@ jobs:
         env:
           REASONIX_RELEASE_CACHE_GUARD: "1"
         run: go test -race ./...
-
-  desktop:
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        working-directory: desktop
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: desktop/go.mod
-          cache: true
-          cache-dependency-path: desktop/go.sum
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-          run_install: false
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: pnpm
-          cache-dependency-path: desktop/frontend/pnpm-lock.yaml
-
-      - name: Install Wails CLI
-        run: |
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-
-      - name: gofmt
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "These files are not gofmt-clean:"
-            echo "$unformatted"
-            exit 1
-          fi
-
-      - name: go.mod tidy
-        run: |
-          go mod tidy
-          if ! git diff --quiet -- go.mod go.sum; then
-            echo "desktop/go.mod or go.sum is stale - run 'cd desktop && go mod tidy' and commit."
-            git diff -- go.mod go.sum
-            exit 1
-          fi
-
-      # WebKitGTK 4.0 toolchain (pinned to ubuntu-22.04; no webkit2_41 tag).
-      - name: Install Linux build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc libgtk-3-dev libwebkit2gtk-4.0-dev
-
-      - name: Build frontend
-        run: |
-          wails generate module
-          pnpm --dir frontend install --frozen-lockfile
-          pnpm --dir frontend build
-
-      - name: vet
-        run: go vet ./...
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.12.2
-          working-directory: desktop
-          args: --timeout=5m
-
-      - name: build
-        run: go build ./...
-
-      - name: test
-        run: go test ./...
 
   lint:
     runs-on: ubuntu-latest

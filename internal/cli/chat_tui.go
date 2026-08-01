@@ -187,7 +187,14 @@ type chatTUI struct {
 	// reads as making progress rather than frozen.
 	toolStreamStart time.Time
 	toolStreamFrame int
-	transcriptDirty bool
+	// lastExpandable records the most recent reasoning/tool block targeted by
+	// Ctrl+O. Tool output uses shellOutputs for all tool ids, not only shells.
+	lastExpandableKind string
+	lastExpandableID   string
+	lastReasoningText  string
+	lastReasoningIdx   int
+	lastReasoningOpen  bool
+	transcriptDirty    bool
 	// forceGotoBottom is set by replayActiveBranch and resetFreshContextView to
 	// pin the viewport to the bottom after a session / branch / clear switch
 	// regardless of the previous wasAtBottom state (#4584).
@@ -297,8 +304,8 @@ type chatTUI struct {
 	// rebuildWithTokenMode rebuilds the controller with a new token mode,
 	// carrying the conversation across. nil when unavailable.
 	rebuildWithTokenMode func(mode string, carry []provider.Message, resumePath string) (*control.Controller, error)
-	modelRef        string
-	effortLevel     string // "" when the current provider/model has no configurable effort
+	modelRef             string
+	effortLevel          string // "" when the current provider/model has no configurable effort
 
 	// outputStyle is the active output-style name (config agent.output_style),
 	// shown as the current entry in the /output-style listing. "" = default.
@@ -448,14 +455,14 @@ type modelSwitchMsg struct {
 
 // tokenModeSwitchMsg carries the result of an async token mode switch.
 type tokenModeSwitchMsg struct {
-	ctrl    control.SessionAPI
-	oldCtrl control.SessionAPI
-	label   string
+	ctrl     control.SessionAPI
+	oldCtrl  control.SessionAPI
+	label    string
 	commands []command.Command
 	skills   []skill.Skill
 	host     *plugin.Host
-	mode    string
-	err     error
+	mode     string
+	err      error
 }
 
 // fetchBalance queries the provider's wallet balance off the event loop. It's a
@@ -533,6 +540,7 @@ func newChatTUI(ctrl control.SessionAPI, missing string, eventCh chan event.Even
 		reasoningTextIdx:     -1,
 		answerIdx:            -1,
 		toolStreamIdx:        -1,
+		lastReasoningIdx:     -1,
 		reasoning:            &strings.Builder{},
 		pending:              &strings.Builder{},
 		pendingCommit:        &commitBuf,
@@ -549,7 +557,7 @@ func newChatTUI(ctrl control.SessionAPI, missing string, eventCh chan event.Even
 		commands:             ctrl.Commands(),
 		skills:               ctrl.Skills(),
 		viewport:             viewport.New(viewport.WithWidth(termW)),
-		statusLineCount:      2,
+		statusLineCount:      1,
 	}
 }
 
@@ -1183,7 +1191,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toggleYoloMode()
 			return m, nil
 		case "ctrl+o":
-			m.toggleVerboseReasoning(m.state != tuiRunning)
+			m.toggleLatestExpandable()
 			return m, finalize(m, cmds)
 		case "ctrl+b":
 			m.toggleShellOutput()
@@ -1520,6 +1528,10 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shimmerTickMsg:
 		if m.state == tuiRunning {
 			m.shimmerFrame++
+			if m.reasoningLineIdx >= 0 && m.reasoningLineIdx < len(m.transcript) {
+				m.transcript[m.reasoningLineIdx] = renderActivity(m.shimmerFrame)
+				m.transcriptDirty = true
+			}
 			cmds = append(cmds, shimmerTickCmd())
 		}
 
@@ -1684,7 +1696,7 @@ func (m chatTUI) bottomRows() int {
 	if m.statusLineCount > 0 {
 		return rows + m.statusLineCount
 	}
-	return rows + 2 // fallback for tests that don't set statusLineCount
+	return rows + 1 // fallback for tests that don't set statusLineCount
 }
 
 // hideComposer is the single ownership gate for the bottom composer.
@@ -1895,18 +1907,12 @@ func (m *chatTUI) streamToolOutput(id, chunk string) {
 			m.toolTail = m.toolTail[:0]
 			m.toolPartial = ""
 			m.toolLineCount = 0
-			if m.nativeScrollback {
-				m.toolStreamIdx = -1
-			} else {
-				m.toolStreamIdx = len(m.transcript)
-				m.commitLine("")
-			}
+			m.toolStreamIdx = -1
 		}
 	}
-	// Accumulate full output for shell commands so Ctrl+B can expand it.
-	if strings.HasPrefix(id, "shell-") {
-		m.shellOutputs[id] += chunk
-	}
+	// Accumulate full output for every tool so Ctrl+O can expand the latest
+	// collapsed block, while the transcript still renders only a bounded tail.
+	m.shellOutputs[id] += chunk
 	// Fold completed lines into the bounded tail; keep the trailing partial.
 	data := m.toolPartial + chunk
 	for {
@@ -1918,7 +1924,6 @@ func (m *chatTUI) streamToolOutput(id, chunk string) {
 		data = data[i+1:]
 	}
 	m.toolPartial = data
-
 	vis := m.toolTail
 	if m.toolPartial != "" {
 		vis = append(append([]string{}, m.toolTail...), m.toolPartial)
@@ -2043,6 +2048,13 @@ func (m *chatTUI) collapseShellSlot(id string, idx int, resultOutput string) {
 		// streamed): treat as zero rather than fabricate a "-1 lines" count.
 		n = 0
 	}
+	if n > 0 {
+		m.transcript[idx] = connectorBlock([]string{dim(fmt.Sprintf("+%d lines (Ctrl+O to expand)", n))})
+		m.shellTranscriptIdx[id] = idx
+		m.lastExpandableKind = "tool"
+		m.lastExpandableID = id
+		return
+	}
 	if n == 0 {
 		// Tool finished with no output: clear the "working…" placeholder but
 		// keep the slot (shellTranscriptIdx still points here for late progress).
@@ -2099,6 +2111,30 @@ func (m *chatTUI) toggleShellOutput() {
 	if innerW < 10 {
 		innerW = 80
 	}
+	// Unified Ctrl+O behavior for every tool output, including non-shell tools.
+	if m.shellExpanded[lastID] {
+		m.shellExpanded[lastID] = false
+		m.transcript[lastIdx] = connectorBlock([]string{dim(fmt.Sprintf("+%d lines (Ctrl+O to expand)", total))})
+	} else {
+		m.shellExpanded[lastID] = true
+		show := total
+		if show > shellExpandMaxLines {
+			show = shellExpandMaxLines
+		}
+		rendered := make([]string, show)
+		for i := 0; i < show; i++ {
+			rendered[i] = dim(clampPlain(lines[i], innerW))
+		}
+		if total > shellExpandMaxLines {
+			rendered = append(rendered, dim(fmt.Sprintf("… %d more lines", total-shellExpandMaxLines)))
+		}
+		m.transcript[lastIdx] = connectorBlock(rendered)
+	}
+	m.transcriptDirty = true
+	if m.nativeScrollback {
+		m.commitLine(m.transcript[lastIdx])
+	}
+	return
 
 	if m.shellExpanded[lastID] {
 		// Collapse back to preview.
@@ -2159,7 +2195,8 @@ func (m *chatTUI) beginToolRunning(id string) {
 		return
 	}
 	m.toolStreamIdx = len(m.transcript)
-	m.commitLine(connectorBlock([]string{dim(fmt.Sprintf(i18n.M.ChatToolWorkingFmt, toolWorkingFrames[0], 0))}))
+	m.commitLine(connectorBlock([]string{renderActivity(0)}))
+	m.shellTranscriptIdx[id] = m.toolStreamIdx
 	// Remember the transcript slot for this id so a late ToolProgress for a
 	// previously dispatched (and possibly already collapsed) tool can reuse
 	// it instead of appending a fresh slot at the end of the transcript. For
@@ -2178,9 +2215,8 @@ func (m *chatTUI) tickToolRunning() {
 		return
 	}
 	m.toolStreamFrame++
-	frame := toolWorkingFrames[m.toolStreamFrame%len(toolWorkingFrames)]
 	secs := int(time.Since(m.toolStreamStart).Seconds())
-	m.transcript[m.toolStreamIdx] = connectorBlock([]string{dim(fmt.Sprintf(i18n.M.ChatToolWorkingFmt, frame, secs))})
+	m.transcript[m.toolStreamIdx] = connectorBlock([]string{renderActivity(m.toolStreamFrame) + fmt.Sprintf("  %ds", secs)})
 	m.transcriptDirty = true
 }
 
@@ -2191,11 +2227,17 @@ func (m *chatTUI) tickToolRunning() {
 func (m *chatTUI) commitReasoning() {
 	if m.reasoningNative {
 		if strings.TrimSpace(m.reasoning.String()) != "" || !m.thinkStart.IsZero() {
+			text := strings.TrimSpace(m.reasoning.String())
 			secs := int(time.Since(m.thinkStart).Seconds())
 			m.commitSpacer()
-			m.commitLine(dim(fmt.Sprintf("  ▎ "+i18n.M.ChatThoughtForFmt, secs)))
-			if m.showReasoning && strings.TrimSpace(m.reasoning.String()) != "" {
-				m.commitLine(reasoningBlock(m.reasoning.String(), m.width, 0))
+			m.commitLine(dim(fmt.Sprintf("  thought for %ds (Ctrl+O to expand)", secs)))
+			m.lastExpandableKind = "reasoning"
+			m.lastReasoningIdx = len(m.transcript) - 1
+			m.lastReasoningText = text
+			m.lastReasoningOpen = false
+			if m.showReasoning && text != "" {
+				m.commitLine(reasoningBlock(text, m.width, 0))
+				m.lastReasoningOpen = true
 			}
 		}
 		m.reasoning.Reset()
@@ -2207,11 +2249,17 @@ func (m *chatTUI) commitReasoning() {
 	if m.reasoningLineIdx < 0 {
 		return
 	}
+	text := strings.TrimSpace(m.reasoning.String())
 	secs := int(time.Since(m.thinkStart).Seconds())
-	m.transcript[m.reasoningLineIdx] = dim(fmt.Sprintf("  ▎ "+i18n.M.ChatThoughtForFmt, secs))
+	m.transcript[m.reasoningLineIdx] = dim(fmt.Sprintf("  thought for %ds (Ctrl+O to expand)", secs))
+	m.lastExpandableKind = "reasoning"
+	m.lastReasoningIdx = m.reasoningLineIdx
+	m.lastReasoningText = text
+	m.lastReasoningOpen = false
 	if m.reasoningTextIdx >= 0 {
-		if m.showReasoning && strings.TrimSpace(m.reasoning.String()) != "" {
-			m.transcript[m.reasoningTextIdx] = reasoningBlock(m.reasoning.String(), m.width, 0)
+		if m.showReasoning && text != "" {
+			m.transcript[m.reasoningTextIdx] = reasoningBlock(text, m.width, 0)
+			m.lastReasoningOpen = true
 		} else {
 			m.transcript = append(m.transcript[:m.reasoningTextIdx], m.transcript[m.reasoningTextIdx+1:]...)
 		}
@@ -2363,6 +2411,8 @@ var (
 	workingStyle        lipgloss.Style
 )
 
+var thinkingGoldStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#B08D3B"))
+
 func (m chatTUI) cancelRequested() bool {
 	if m.state != tuiRunning || m.ctrl == nil {
 		return false
@@ -2377,15 +2427,15 @@ func (m chatTUI) runningWorkingLine(cancelRequested, styled bool) string {
 	if m.retryAttempt > 0 && !cancelRequested {
 		return fmt.Sprintf("  "+i18n.M.ChatStatusRetryingFmt, m.spinner.View(), m.retryAttempt, m.retryMax)
 	}
+	if !cancelRequested {
+		return fmt.Sprintf("%s  %ds · Esc", renderActivity(m.shimmerFrame), m.elapsed)
+	}
 
 	var working string
 	if cancelRequested {
 		working = fmt.Sprintf("  "+i18n.M.ChatStatusCancellingFmt, m.spinner.View(), m.elapsed)
 	} else {
-		working = fmt.Sprintf("  %s  (%ds · Esc cancels)", renderShimmer(m.shimmerFrame), m.elapsed)
-	}
-	if m.turnTokens > 0 {
-		working += " · ↓" + shortTokens(m.turnTokens)
+		working = fmt.Sprintf("%s  (%ds · Esc cancels)", renderActivity(m.shimmerFrame), m.elapsed)
 	}
 	if n := len(m.pendingInterject); n > 0 {
 		var queued string
@@ -2512,6 +2562,17 @@ func (m chatTUI) View() tea.View {
 	if m.statuslineCmd != "" && m.statuslineOut != "" {
 		dataLine = "  " + m.statuslineOut
 	}
+	// The footer intentionally exposes only mode, model, and context. Advanced runtime
+	// metrics remain available through the metrics/debug commands, not the UI.
+	status = "  " + modeTag
+	compactData := make([]string, 0, 2)
+	if mt := m.modelTag(); mt != "" {
+		compactData = append(compactData, mt)
+	}
+	if ctxTag != "" {
+		compactData = append(compactData, ctxTag)
+	}
+	dataLine = "  " + strings.Join(compactData, " · ")
 
 	// Bottom region pinned under the transcript viewport: optional panels, the
 	// composer when visible, then the two status rows. Its height feeds
@@ -2556,6 +2617,12 @@ func (m chatTUI) View() tea.View {
 			rowsAboveBox += strings.Count(card, "\n") + 1
 		}
 	}
+	if len(parts) > 0 {
+		// Keep panels and task planning visually separate from the composer/status
+		// rail; otherwise their borders touch and look like one broken widget.
+		parts = append(parts, "")
+		rowsAboveBox++
+	}
 	// Layout: the working spinner (when running), then the composer when visible,
 	// then the two status rows (line 1 = mode + run config + worktree identity, line 2 = live run data).
 	// Each row is wrapped to width so long content flows onto additional rows
@@ -2568,7 +2635,11 @@ func (m chatTUI) View() tea.View {
 		parts = append(parts, footer)
 		rowsAboveBox += strings.Count(footer, "\n") + 1
 	}
-	statusBlock := wrapStatusLine(status, boxW) + "\n" + wrapStatusLine(dataLine, boxW)
+	footerLine := status
+	if strings.TrimSpace(dataLine) != "" {
+		footerLine += " · " + strings.TrimSpace(dataLine)
+	}
+	statusBlock := wrapStatusLine(footerLine, boxW)
 	if !hideComposer {
 		if qi := m.renderQueueIndicator(); qi != "" {
 			parts = append(parts, qi)
@@ -2644,11 +2715,22 @@ func compactionCardLines(c event.Compaction) []string {
 	return lines
 }
 
-// contextTag renders the prompt-vs-context-window gauge for the status line,
+// contextTag renders the compact prompt gauge used by the pinned footer.
+func (m chatTUI) contextTag() string {
+	used, window := m.ctrl.ContextSnapshot()
+	if used == 0 || window == 0 {
+		return ""
+	}
+	pct := used * 100 / window
+	return dim(fmt.Sprintf("%s ctx (%d%%)", shortTokens(used), pct))
+}
+
+// contextTagVerbose retains the older detailed gauge for future diagnostics;
+// it is intentionally not rendered in the compact terminal footer.
 // framed around the auto-compaction threshold: it shows how much headroom is
 // left until the next compaction, and colours by proximity to that point rather
 // than the raw window. Falls back to a plain percentage when compaction is disabled.
-func (m chatTUI) contextTag() string {
+func (m chatTUI) contextTagVerbose() string {
 	used, window := m.ctrl.ContextSnapshot()
 	if used == 0 || window == 0 {
 		return ""
@@ -2857,6 +2939,10 @@ type todoPanelTodo struct {
 // pending ones muted. It returns "" when there's no list or every item is done,
 // so the panel appears while work is outstanding and clears itself when finished.
 func (m chatTUI) renderTodoPanel() string {
+	// Task progress is intentionally kept internal; the CLI shows only the
+	// unified activity indicator while a task is running.
+	return ""
+
 	var p struct {
 		Todos []todoPanelTodo `json:"todos"`
 	}
@@ -3025,6 +3111,15 @@ func (m chatTUI) computeStatusLineCount(width int) int {
 	if m.statuslineCmd != "" && m.statuslineOut != "" {
 		dataLine = "  " + m.statuslineOut
 	}
+	status = "  " + modeTag
+	compactData := make([]string, 0, 2)
+	if mt := m.modelTag(); mt != "" {
+		compactData = append(compactData, mt)
+	}
+	if ct := m.contextTag(); ct != "" {
+		compactData = append(compactData, ct)
+	}
+	dataLine = "  " + strings.Join(compactData, " · ")
 
 	// Replicate the working (spinner) line from View(), shown only while a turn runs.
 	working := m.runningWorkingLine(cancelRequested, false)
@@ -3035,8 +3130,11 @@ func (m chatTUI) computeStatusLineCount(width int) int {
 		// working (spinner) line — wraps independently of the status block below.
 		lines += strings.Count(wrapStatusLine(working, width), "\n") + 1
 	}
-	lines += strings.Count(wrapStatusLine(status, width), "\n") + 1
-	lines += strings.Count(wrapStatusLine(dataLine, width), "\n") + 1
+	footerLine := status
+	if strings.TrimSpace(dataLine) != "" {
+		footerLine += " · " + strings.TrimSpace(dataLine)
+	}
+	lines += strings.Count(wrapStatusLine(footerLine, width), "\n") + 1
 	return lines
 }
 
@@ -3073,7 +3171,8 @@ func (m *chatTUI) growInputToFit() {
 }
 
 // cycleMode handles the Tab key mode gesture. Cycles through:
-//   build (normal) → plan → goal → build → ...
+//
+//	build (normal) → plan → goal → build → ...
 func (m *chatTUI) cycleMode() {
 	if m.goalMode {
 		// goal → build
@@ -3193,6 +3292,49 @@ func (m *chatTUI) toggleVerboseReasoning(notify bool) {
 		m.notice("verbose on — thinking text will be shown")
 	} else {
 		m.notice("verbose off — thinking text will stay collapsed")
+	}
+}
+
+// toggleLatestExpandable gives reasoning and tool output one predictable
+// expansion gesture. It deliberately does not persist the toggle: Ctrl+O is a
+// viewing preference for the current block, not a global verbosity setting.
+func (m *chatTUI) toggleLatestExpandable() {
+	if m.reasoningLineIdx >= 0 {
+		m.showReasoning = !m.showReasoning
+		if m.reasoningTextIdx >= 0 && m.reasoningTextIdx < len(m.transcript) {
+			text := strings.TrimSpace(m.reasoning.String())
+			if m.showReasoning && text != "" {
+				m.transcript[m.reasoningTextIdx] = reasoningBlock(text, m.width, 0)
+			} else {
+				m.transcript = append(m.transcript[:m.reasoningTextIdx], m.transcript[m.reasoningTextIdx+1:]...)
+				m.reasoningTextIdx = -1
+			}
+			m.transcriptDirty = true
+		}
+		return
+	}
+	switch m.lastExpandableKind {
+	case "reasoning":
+		if m.lastReasoningIdx < 0 || m.lastReasoningIdx >= len(m.transcript) || m.lastReasoningText == "" {
+			return
+		}
+		if m.lastReasoningOpen {
+			if m.lastReasoningIdx+1 < len(m.transcript) {
+				m.transcript = append(m.transcript[:m.lastReasoningIdx+1], m.transcript[m.lastReasoningIdx+2:]...)
+			}
+			m.lastReasoningOpen = false
+		} else {
+			line := reasoningBlock(m.lastReasoningText, m.width, 0)
+			m.transcript = append(m.transcript, "")
+			copy(m.transcript[m.lastReasoningIdx+2:], m.transcript[m.lastReasoningIdx+1:])
+			m.transcript[m.lastReasoningIdx+1] = line
+			m.lastReasoningOpen = true
+		}
+		m.transcriptDirty = true
+	case "tool":
+		m.toggleShellOutput()
+	default:
+		m.showReasoning = !m.showReasoning
 	}
 }
 
@@ -3327,7 +3469,7 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 			m.commitSpacer()
 			m.thinkStart = time.Now()
 			m.reasoningLineIdx = len(m.transcript)
-			m.commitLine(dim("  ▎ " + i18n.M.ChatThinking))
+			m.commitLine(renderActivity(m.shimmerFrame))
 			m.reasoningTextIdx = len(m.transcript)
 			m.commitLine("")
 			m.reasoningView = m.reasoningView[:0]
@@ -3352,6 +3494,10 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 		}
 		m.finalizeStreamed()
 		switch e.Tool.Name {
+		case "wait":
+			// wait is an internal coordinator operation; its result is already
+			// reflected by the background job notices and should not add a card.
+			return
 		case "todo_write":
 			// The result decides whether this list becomes canonical; dispatch only
 			// means the model asked for an update.
@@ -3359,20 +3505,20 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 			// No longer a tool, but guard anyway: the plan is the assistant's reply.
 		default:
 			m.commitSpacer()
-			if block := diffBlock(e.Tool.Name, e.Tool.Args, e.Tool.FileDiff, m.width, m.diffMaxLines); block != nil {
-				for _, ln := range block {
-					m.commitLine(ln)
-				}
-				break
-			}
 			m.commitLine(toolCard(e.Tool.Name, e.Tool.Args, m.width))
 			m.beginToolRunning(e.Tool.ID)
 		}
 
 	case event.ToolProgress:
+		if e.Tool.Name == "wait" {
+			return
+		}
 		m.streamToolOutput(e.Tool.ID, e.Tool.Output)
 
 	case event.ToolResult:
+		if e.Tool.Name == "wait" {
+			return
+		}
 		// A successful result is silent (it only feeds the model); a blocked/failed
 		// call surfaces a red "⏺ Verb ⊘ <reason>" card. A live-output block (bash)
 		// collapses to a one-line "⎿ N lines" summary first. Pass the final
@@ -3391,12 +3537,13 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 		if e.Usage != nil {
 			m.turnTokens += e.Usage.CompletionTokens
 		}
-		if line := agent.FormatUsageLine(e.Usage, e.Pricing, e.CacheDiagnostics); line != "" {
-			m.finalizeStreamed()
-			m.commitLine(line)
-		}
+		// Usage remains available to metrics/debug output, but is intentionally not
+		// rendered into the conversation transcript.
 
 	case event.Notice:
+		if strings.HasPrefix(e.Text, "background bash started:") || strings.HasPrefix(e.Text, "background bash finished:") || strings.HasPrefix(e.Text, "background task started:") || strings.HasPrefix(e.Text, "background task finished:") {
+			return
+		}
 		glyph := "·"
 		if e.Level == event.LevelWarn {
 			glyph = "!"
@@ -3443,7 +3590,7 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 
 	case event.Phase:
 		m.finalizeStreamed()
-		m.commitLine(fmt.Sprintf("[%s]", e.Text))
+		m.commitLine(dim(fmt.Sprintf("[%s]", e.Text)))
 
 	case event.ApprovalRequest:
 		// The controller's run goroutine is now blocked inside the gate awaiting
@@ -4114,6 +4261,9 @@ func renderUserBubble(line string, width int, planMode bool) string {
 	}
 	if !colorEnabled {
 		return "│ " + prefix + line
+	}
+	if planMode {
+		return "  " + yellow(prefix+line)
 	}
 	return "  " + accent(prefix+line)
 }

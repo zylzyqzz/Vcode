@@ -434,8 +434,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	b.WriteString("[sandbox]\n")
 	b.WriteString("# Confine tool blast radius. File-writers (write_file/edit_file/multi_edit/move_file)\n")
 	b.WriteString("# may only write under workspace_root (empty = current dir) and allow_write extras.\n")
-	b.WriteString("# bash = \"enforce\" (default) jails each command in an OS sandbox when\n")
-	b.WriteString("# available; without one, bash execution is refused. \"off\" disables it. network allows egress.\n")
+	b.WriteString("# bash = \"auto\" (default) uses an OS sandbox when available; otherwise\n")
+	b.WriteString("# the CLI permission policy remains active. \"enforce\" fails closed without one; \"off\" disables it.\n")
 	if c.Sandbox.WorkspaceRoot != "" {
 		fmt.Fprintf(&b, "workspace_root = %q\n", c.Sandbox.WorkspaceRoot)
 	} else {

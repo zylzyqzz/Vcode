@@ -2,10 +2,13 @@ VERSION := $(shell git describe --tags --always 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 GOEXE := $(shell go env GOEXE)
 
-.PHONY: build vet fmt test hooks cross clean
+.PHONY: build build-cli vet fmt fmt-check test test-cli check hooks cross clean
+
+build-cli:
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vcode$(GOEXE) ./cmd/vcode
 
 build:
-	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vcode$(GOEXE) ./cmd/vcode
+	$(MAKE) build-cli
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vcode-plugin-example$(GOEXE) ./cmd/vcode-plugin-example
 
 vet:
@@ -14,8 +17,15 @@ vet:
 fmt:
 	gofmt -w .
 
+fmt-check:
+	@test -z "$$(gofmt -l .)" || (echo "These files are not gofmt-clean:"; gofmt -l .; exit 1)
+
 test:
 	go test ./...
+
+test-cli: test
+
+check: fmt-check vet test-cli
 
 hooks:
 	@git config core.hooksPath .githooks

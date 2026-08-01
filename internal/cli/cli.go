@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 	"unicode/utf16"
 
 	"vcode/internal/agent"
@@ -32,7 +33,7 @@ import (
 	"vcode/internal/provider"
 	"vcode/internal/provider/openai"
 	"vcode/internal/serve"
-	"time"
+	"vcode/internal/verify"
 
 	tea "charm.land/bubbletea/v2"
 	"golang.org/x/term"
@@ -205,6 +206,7 @@ func setup(ctx context.Context, modelName string, maxStepsOverride int, requireK
 		MaxSteps:   maxStepsOverride,
 		RequireKey: requireKey,
 		Sink:       sink,
+		TokenMode:  boot.TokenModeEconomy,
 		SessionDir: resolveCLISessionDir(),
 	})
 }
@@ -233,6 +235,7 @@ func setupQuiet(ctx context.Context, modelName string, maxStepsOverride int, req
 		RequireKey: requireKey,
 		Sink:       sink,
 		Stderr:     io.Discard,
+		TokenMode:  boot.TokenModeEconomy,
 	})
 }
 
@@ -302,6 +305,7 @@ func runAgent(args []string) int {
 	maxSteps := fs.Int("max-steps", 0, "max tool-call rounds (0 = use config/default)")
 	showThinking := fs.Bool("show-thinking", false, "show thinking text instead of the collapsed thinking marker")
 	metricsPath := fs.String("metrics", "", "write a JSON token/cache/cost summary of the run to this path")
+	noVerify := fs.Bool("no-verify", false, "skip automatic project verification after the run")
 	dir := fs.String("dir", "", "change to this directory first (project root); config, sandbox and file tools resolve from here")
 	cont := fs.Bool("continue", false, "resume the most recent saved session")
 	fs.BoolVar(cont, "c", false, "shorthand for --continue")
@@ -407,7 +411,30 @@ func runAgent(args []string) int {
 		fmt.Fprintln(os.Stderr, "\n"+i18n.M.ErrorPrefix, runErr)
 		return 1
 	}
+	if !*noVerify {
+		verification := verify.Run(ctx, mustCurrentDir())
+		fmt.Fprintf(os.Stderr, "\nverification: %s\n", verification.Status)
+		for _, check := range verification.Passed {
+			fmt.Fprintf(os.Stderr, "  passed  %s\n", check)
+		}
+		for _, failure := range verification.Failed {
+			fmt.Fprintf(os.Stderr, "  failed  %s\n", failure)
+		}
+		if verification.Skipped != "" {
+			fmt.Fprintf(os.Stderr, "  note    %s\n", verification.Skipped)
+		}
+		if len(verification.Failed) > 0 {
+			return 1
+		}
+	}
 	return 0
+}
+
+func mustCurrentDir() string {
+	if cwd, err := os.Getwd(); err == nil {
+		return cwd
+	}
+	return "."
 }
 
 // runServe exposes the controller over HTTP+SSE: events stream to the browser,

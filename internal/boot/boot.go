@@ -307,6 +307,8 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	bashSpec.Shell = shell
 	if bashSpec.Mode == "enforce" && !sandbox.Available() {
 		fmt.Fprintln(stderr, "warning: bash sandbox requested but unavailable on this platform; bash execution will be refused")
+	} else if bashSpec.Mode == "auto" && !sandbox.Available() {
+		fmt.Fprintln(stderr, "warning: no OS-level bash sandbox is available; using permission-gated execution (not a security boundary)")
 	}
 	if autoShellPrefer(cfg.Tools.Shell.Prefer) && shell.Kind == sandbox.ShellPowerShell {
 		fmt.Fprintln(stderr, "warning: bash not found on PATH; the shell tool will run commands under Windows PowerShell. Install Git for Windows or WSL to use bash, or set [tools.shell] prefer=\"powershell\" to silence this.")

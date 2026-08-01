@@ -19,7 +19,7 @@
 
 ## 特性
 
-- **配置驱动**：provider、agent、启用的工具、插件全部在 `Vcode.toml` 中声明，内核无硬编码模型。
+- **配置驱动**：provider、agent、启用的工具、插件全部在 `vcode.toml` 中声明，内核无硬编码模型。
 - **多模型 · 可组合**：DeepSeek 作为预设内置；任何 OpenAI 兼容端点都只是一条配置。可选让两个模型协同（执行器 + 规划器），各自独立、缓存稳定的 session。
 - **插件驱动**：外部工具以子进程形式运行，通过 stdio JSON-RPC 通信（MCP 兼容）；内置工具在编译期自注册。
 - **缓存友好的上下文维护**：启动时注入稳定的环境摘要；旧工具输出会先 snip/prune，再进入摘要 compaction；内置工具 schema 合约有文档和回归测试保护。
@@ -48,7 +48,7 @@ make cross      # -> dist/（darwin|linux|windows × amd64|arm64）
 ## 快速开始
 
 ```sh
-Vcode setup                      # 配置向导 → ./Vcode.toml
+Vcode setup                      # 配置向导 → ./vcode.toml
 export DEEPSEEK_API_KEY=sk-...      # 也可以让 setup 保存到 Vcode 全局 .env
 Vcode                            # 然后在会话里运行 /init 生成 AGENTS.md（项目记忆）
 Vcode run "把 main.go 里的 TODO 实现掉"
@@ -56,9 +56,14 @@ Vcode run --model deepseek-pro "给这个函数补单元测试"
 echo "解释这段代码" | Vcode run
 ```
 
+`vcode run` 会自动识别常见项目检查，并在任务结束时报告 `VERIFIED`、`PARTIAL`
+或 `UNVERIFIED`；如需明确跳过可使用 `--no-verify`。Bash 默认使用
+`sandbox.bash = "auto"`：Windows 没有 OS 级沙箱时仍可使用，但 Vcode 会明确提示
+此时由权限策略承担主要安全边界。
+
 ## 配置
 
-一个最小的 `Vcode.toml`——一个 provider 加一个默认模型——就够跑起来:
+一个最小的 `vcode.toml`——一个 provider 加一个默认模型——就够跑起来:
 
 ```toml
 default_model = "deepseek-flash"
@@ -71,7 +76,7 @@ model       = "deepseek-v4-flash"
 api_key_env = "DEEPSEEK_API_KEY"
 ```
 
-优先级为 **flag > `./Vcode.toml` > 用户配置文件 > 内置默认值**；从 **Vcode v1.8.1** 开始，用户配置位于 macOS/Linux 的 `~/.Vcode/config.toml`，Windows 为 `%AppData%\Vcode\config.toml`。迁移细节见 **[配置路径](./docs/CONFIG_PATHS.zh-CN.md)**，其中也说明了全局 `config.toml` 和 `.env` 的完整结构。权限、沙盒、插件(MCP)、斜杠命令、`@` 引用与双模型设置，全部在 **[指南](./docs/GUIDE.zh-CN.md)** 里。
+优先级为 **flag > `./vcode.toml` > 用户配置文件 > 内置默认值**；从 **Vcode v1.8.1** 开始，用户配置位于 macOS/Linux 的 `~/.Vcode/config.toml`，Windows 为 `%AppData%\Vcode\config.toml`。迁移细节见 **[配置路径](./docs/CONFIG_PATHS.zh-CN.md)**，其中也说明了全局 `config.toml` 和 `.env` 的完整结构。权限、沙盒、插件(MCP)、斜杠命令、`@` 引用与双模型设置，全部在 **[指南](./docs/GUIDE.zh-CN.md)** 里。
 
 ## 文档
 

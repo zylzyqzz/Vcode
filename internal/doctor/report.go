@@ -75,6 +75,9 @@ type SessionsReport struct {
 
 type SandboxReport struct {
 	Bash       string   `json:"bash"`
+	Effective  string   `json:"effective"`
+	Degraded   bool     `json:"degraded"`
+	Reason     string   `json:"reason,omitempty"`
 	Network    bool     `json:"network"`
 	WriteRoots []string `json:"write_roots,omitempty"`
 	// Available is whether an OS sandbox actually backs an "enforce" request on
@@ -118,6 +121,7 @@ func Collect(opts Options) Report {
 			}
 		}
 	}
+	status := sandbox.Status(cfg.BashMode())
 	report := Report{
 		Version: opts.Version,
 		OS:      runtime.GOOS,
@@ -135,9 +139,12 @@ func Collect(opts Options) Report {
 		Sessions: collectSessions(config.SessionDir()),
 		Sandbox: SandboxReport{
 			Bash:       cfg.BashMode(),
+			Effective:  status.Effective,
+			Degraded:   status.Degraded,
+			Reason:     status.Reason,
 			Network:    cfg.Sandbox.Network,
 			WriteRoots: redactHomeAll(cfg.WriteRoots()),
-			Available:  sandbox.Available(),
+			Available:  status.Available,
 		},
 		Network: NetworkReport{
 			ProxyMode: cfg.NetworkProxyMode(),
@@ -240,6 +247,10 @@ func RenderText(r Report) string {
 		bashLine += " (unavailable: no OS sandbox on this host — bash execution is refused)"
 	}
 	fmt.Fprintf(&b, "  bash         %s\n", bashLine)
+	fmt.Fprintf(&b, "  effective    %s\n", valueOr(r.Sandbox.Effective, "unknown"))
+	if r.Sandbox.Reason != "" {
+		fmt.Fprintf(&b, "  security     %s\n", r.Sandbox.Reason)
+	}
 	fmt.Fprintf(&b, "  network      %v\n", r.Sandbox.Network)
 	fmt.Fprintf(&b, "  write_roots  %s\n", strings.Join(r.Sandbox.WriteRoots, ", "))
 

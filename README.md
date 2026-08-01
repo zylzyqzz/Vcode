@@ -19,7 +19,7 @@
 
 ## Features
 
-- **Config-driven.** Providers, the agent, enabled tools, and plugins are all declared in `Vcode.toml`. No hardcoded models.
+- **Config-driven.** Providers, the agent, enabled tools, and plugins are all declared in `vcode.toml`. No hardcoded models.
 - **Multi-model & composable.** DeepSeek ships as a preset; any OpenAI-compatible endpoint is a config entry, not new code. Optionally run two models together (executor + planner) in separate, cache-stable sessions.
 - **Plugin-driven.** External tools run as subprocesses over stdio JSON-RPC (MCP-compatible). Built-in tools self-register at compile time.
 - **Cache-aware context maintenance.** Startup injects a small stable environment summary, stale tool output is snipped/pruned before summary compaction, and the built-in tool schema contract is documented for regression review.
@@ -48,7 +48,7 @@ make cross      # -> dist/ (darwin|linux|windows × amd64|arm64)
 ## Quick start
 
 ```sh
-Vcode setup                      # config wizard → ./Vcode.toml
+Vcode setup                      # config wizard → ./vcode.toml
 export DEEPSEEK_API_KEY=sk-...      # or let setup save it to Vcode home .env
 Vcode                            # then run /init to generate AGENTS.md (project memory)
 Vcode run "implement the TODOs in main.go"
@@ -56,9 +56,14 @@ Vcode run --model deepseek-pro "add unit tests for this function"
 echo "explain this code" | Vcode run
 ```
 
+`vcode run` automatically detects common project checks and reports `VERIFIED`,
+`PARTIAL`, or `UNVERIFIED` when the task ends. Use `--no-verify` for a deliberate
+skip. Bash defaults to `sandbox.bash = "auto"`: Windows remains usable without
+an OS jail, but Vcode reports that the permission policy is the active boundary.
+
 ## Configuration
 
-A minimal `Vcode.toml` — one provider and a default model — is enough to start:
+A minimal `vcode.toml` — one provider and a default model — is enough to start:
 
 ```toml
 default_model = "deepseek-flash"
@@ -71,7 +76,7 @@ model       = "deepseek-v4-flash"
 api_key_env = "DEEPSEEK_API_KEY"
 ```
 
-Resolution order is **flag > `./Vcode.toml` > the user config file > built-in defaults**; starting with **Vcode v1.8.1**, the user file lives at `~/.Vcode/config.toml` on macOS/Linux and `%AppData%\Vcode\config.toml` on Windows. See **[Configuration paths](./docs/CONFIG_PATHS.md)** for migration details and the full `config.toml` / `.env` structure. Provider entries name secrets with `api_key_env`; the secret values themselves live in Vcode's global `<Vcode home>/.env`, shared by CLI and desktop. Permissions, the sandbox, plugins (MCP), slash commands, `@` references, and two-model setup are all in the **[Guide](./docs/GUIDE.md)**.
+Resolution order is **flag > `./vcode.toml` > the user config file > built-in defaults**; starting with **Vcode v1.8.1**, the user file lives at `~/.Vcode/config.toml` on macOS/Linux and `%AppData%\Vcode\config.toml` on Windows. See **[Configuration paths](./docs/CONFIG_PATHS.md)** for migration details and the full `config.toml` / `.env` structure. Provider entries name secrets with `api_key_env`; the secret values themselves live in Vcode's global `<Vcode home>/.env`, shared by CLI. Permissions, the sandbox, plugins (MCP), slash commands, `@` references, and two-model setup are all in the **[Guide](./docs/GUIDE.md)**.
 
 ## Documentation
 

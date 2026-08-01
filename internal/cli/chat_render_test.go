@@ -22,7 +22,7 @@ func newTestChatTUI() chatTUI {
 	return chatTUI{
 		input:                ti,
 		width:                80,
-		statusLineCount:      2,
+		statusLineCount:      1,
 		submittedInputCursor: -1,
 		queueEditCursor:      -1,
 		nextPasteID:          1,
@@ -30,6 +30,7 @@ func newTestChatTUI() chatTUI {
 		reasoningTextIdx:     -1,
 		answerIdx:            -1,
 		toolStreamIdx:        -1,
+		lastReasoningIdx:     -1,
 		reasoning:            &strings.Builder{},
 		pending:              &strings.Builder{},
 		pendingCommit:        &commit,
@@ -61,7 +62,7 @@ func TestIngestSeparatesReasoningFromAnswer(t *testing.T) {
 	m := newTestChatTUI()
 
 	m.ingestEvent(event.Event{Kind: event.Reasoning, Text: "…reasoning…"}) // thinking → marker + live text
-	if len(m.transcript) != 2 || !strings.Contains(m.transcript[0], "thinking") {
+	if len(m.transcript) != 2 || !strings.Contains(m.transcript[0], "V.....") {
 		t.Fatalf("thinking marker should appear at once, transcript=%v", m.transcript)
 	}
 	if !strings.Contains(m.transcript[1], "…reasoning…") {
@@ -209,23 +210,22 @@ func TestToolProgressStreamsThenCollapses(t *testing.T) {
 }
 
 // TestToolWorkingLineThenClears proves a dispatched tool that streams no output
-// (e.g. symbol_context) shows a live "working · Ns" line so it doesn't look
-// frozen, and that the line clears on the result instead of collapsing to
-// "0 lines".
+// (e.g. symbol_context) shows a live V..... activity line so it doesn't look
+// frozen, and that the line clears on the result.
 func TestToolWorkingLineThenClears(t *testing.T) {
 	m := newTestChatTUI()
 	m.ingestEvent(event.Event{Kind: event.ToolDispatch, Tool: event.Tool{ID: "c1", Name: "symbol_context", Args: `{"q":"x"}`}})
 
 	m.tickToolRunning() // one elapsed tick fills the placeholder
 	joined := strings.Join(m.transcript, "\n")
-	if !strings.Contains(joined, "⎿") || !strings.Contains(joined, "working") {
-		t.Fatalf("a running tool should show a 'working' progress line:\n%s", joined)
+	if !strings.Contains(joined, "V.....") {
+		t.Fatalf("a running tool should show the V..... activity line:\n%s", joined)
 	}
 
 	m.ingestEvent(event.Event{Kind: event.ToolResult, Tool: event.Tool{ID: "c1", Name: "symbol_context"}})
 	joined = strings.Join(m.transcript, "\n")
-	if strings.Contains(joined, "working") {
-		t.Fatalf("working line should clear after the result:\n%s", joined)
+	if strings.Contains(joined, "V.....") {
+		t.Fatalf("activity line should clear after the result:\n%s", joined)
 	}
 	if strings.Contains(joined, "0 lines") {
 		t.Fatalf("a no-output tool must not collapse to '0 lines':\n%s", joined)
@@ -301,13 +301,11 @@ func TestConsecutiveToolCallsKeepMarkersUnderOwnCard(t *testing.T) {
 		}
 	}
 
-	// The first card's marker must reflect the full output of the first
-	// run ("On branch main-v2" AND "nothing to commit"), not just the
-	// first chunk. The bug left only the pre-late-progress chunk in
-	// transcript[idx1+1], so the second line would be missing.
+	// The first card keeps a compact count while the full output remains
+	// available to Ctrl+O.
 	marker1 := transcript[idx1+1]
-	if !strings.Contains(marker1, "On branch main-v2") || !strings.Contains(marker1, "nothing to commit") {
-		t.Fatalf("first card's marker should preview the full output of shell-1, got %q", marker1)
+	if !strings.Contains(marker1, "+2 lines") || !strings.Contains(marker1, "Ctrl+O") {
+		t.Fatalf("first card's marker should be a compact expandable summary, got %q", marker1)
 	}
 }
 
@@ -346,11 +344,46 @@ func TestCollapsedShellHintUsesKeyboardShortcutOnly(t *testing.T) {
 	m.collapseShellSlot(id, 0, output)
 
 	got := m.transcript[0]
-	if !strings.Contains(got, "more lines (Ctrl+B)") {
-		t.Fatalf("collapsed shell hint should mention Ctrl+B, got %q", got)
+	if !strings.Contains(got, "+12 lines (Ctrl+O to expand)") {
+		t.Fatalf("collapsed shell hint should mention Ctrl+O, got %q", got)
 	}
 	if strings.Contains(got, "click/") {
 		t.Fatalf("collapsed shell hint must not advertise mouse click in default TUI mode, got %q", got)
+	}
+}
+
+func TestCtrlOExpandsLatestToolOutput(t *testing.T) {
+	m := newTestChatTUI()
+	m.ingestEvent(event.Event{Kind: event.ToolDispatch, Tool: event.Tool{ID: "read-1", Name: "read_file", Args: `{"path":"a.txt"}`}})
+	m.ingestEvent(event.Event{Kind: event.ToolProgress, Tool: event.Tool{ID: "read-1", Output: "first\nsecond\n"}})
+	m.ingestEvent(event.Event{Kind: event.ToolResult, Tool: event.Tool{ID: "read-1", Name: "read_file", Output: "first\nsecond\n"}})
+	joined := strings.Join(m.transcript, "\n")
+	if !strings.Contains(joined, "+2 lines (Ctrl+O to expand)") {
+		t.Fatalf("tool output should be collapsed by default: %q", joined)
+	}
+	m.toggleLatestExpandable()
+	joined = strings.Join(m.transcript, "\n")
+	if !strings.Contains(joined, "first") || !strings.Contains(joined, "second") {
+		t.Fatalf("Ctrl+O should expand the latest tool output: %q", joined)
+	}
+	m.toggleLatestExpandable()
+	if joined = strings.Join(m.transcript, "\n"); !strings.Contains(joined, "+2 lines (Ctrl+O to expand)") {
+		t.Fatalf("Ctrl+O should collapse the latest tool output: %q", joined)
+	}
+}
+
+func TestReasoningSummaryExpandsWithCtrlO(t *testing.T) {
+	m := newTestChatTUI()
+	m.ingestEvent(event.Event{Kind: event.Reasoning, Text: "inspect the files"})
+	m.ingestEvent(event.Event{Kind: event.Message})
+	joined := strings.Join(m.transcript, "\n")
+	if !strings.Contains(joined, "thought for") || !strings.Contains(joined, "Ctrl+O to expand") {
+		t.Fatalf("reasoning should be summarized by default: %q", joined)
+	}
+	m.toggleLatestExpandable()
+	joined = strings.Join(m.transcript, "\n")
+	if !strings.Contains(joined, "inspect the files") {
+		t.Fatalf("Ctrl+O should expand the reasoning summary: %q", joined)
 	}
 }
 

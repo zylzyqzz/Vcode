@@ -300,13 +300,12 @@ func TestStatusLineWrapAccounting(t *testing.T) {
 	ctrl := control.New(control.Options{})
 	m := newChatTUI(ctrl, "", make(chan event.Event, 1), 30)
 
-	// Narrow terminal: mode+state line and data line will both wrap.
+	// Narrow terminal: the compact footer remains two rows.
 	m0, _ := m.Update(tea.WindowSizeMsg{Width: 30, Height: 12})
 	m = m0.(chatTUI)
 
-	// At width 30 the status block should be detectably wrapped.
-	if m.statusLineCount <= 2 {
-		t.Fatalf("statusLineCount on a narrow terminal (30 cols) = %d, want > 2 (wrapping should be detected)", m.statusLineCount)
+	if m.statusLineCount != 2 {
+		t.Fatalf("statusLineCount on a narrow terminal (30 cols) = %d, want 2", m.statusLineCount)
 	}
 
 	// Verify the height budget covers the full screen.
@@ -328,15 +327,15 @@ func TestStatusLineWrapAccounting(t *testing.T) {
 		t.Fatalf("statusLineCount when running (%d) should be > idle (%d)", runCount, idleCount)
 	}
 
-	// Reset and test that a custom statusline command is also counted.
+	// Reset and confirm custom statusline output does not expand the compact footer.
 	m.state = tuiIdle
 	m.pendingInterject = nil
 	m.statuslineCmd = "custom"
 	m.statuslineOut = "model: claude-3 · ctx: 45% · tokens: 128K · cache: 87% · rate: 1.2s · jobs: 3 running · balance: ¥152.30"
 	m0, _ = m.Update(tea.WindowSizeMsg{Width: 35, Height: 12})
 	m = m0.(chatTUI)
-	if m.statusLineCount <= 2 {
-		t.Fatalf("statusLineCount with custom statusline on 35 cols = %d, want > 2 (custom output should wrap)", m.statusLineCount)
+	if m.statusLineCount != 2 {
+		t.Fatalf("statusLineCount with custom statusline on 35 cols = %d, want 2", m.statusLineCount)
 	}
 	if got := m.transcriptHeight() + m.bottomRows(); got != m.height {
 		t.Fatalf("with custom statusline: transcriptHeight(%d) + bottomRows(%d) = %d, want %d",
@@ -359,8 +358,8 @@ func TestStatusLineRenderedHeightMatchesBudget(t *testing.T) {
 	m0, _ := m.Update(tea.WindowSizeMsg{Width: 46, Height: 12})
 	m = m0.(chatTUI)
 
-	if m.statusLineCount <= 2 {
-		t.Fatalf("statusLineCount at width 46 with CJK = %d, want > 2", m.statusLineCount)
+	if m.statusLineCount != 2 {
+		t.Fatalf("statusLineCount at width 46 with CJK = %d, want 2", m.statusLineCount)
 	}
 
 	// Verify that computeStatusLineCount matches the actual rendered line count.
@@ -479,8 +478,8 @@ func TestMCPManagerHidesComposerBox(t *testing.T) {
 	if !strings.Contains(content, "Enter for details") {
 		t.Fatalf("MCP footer hint missing from view:\n%s", content)
 	}
-	if !strings.Contains(content, "· MCP") {
-		t.Fatalf("MCP status line missing from view:\n%s", content)
+	if strings.Contains(content, "· MCP") {
+		t.Fatalf("compact status line should not contain MCP:\n%s", content)
 	}
 }
 
@@ -798,7 +797,7 @@ func TestIngestEventRoutesByKind(t *testing.T) {
 	// Reasoning shows a marker plus the live thinking text streamed below it.
 	m := newTestChatTUI()
 	m.ingestEvent(event.Event{Kind: event.Reasoning, Text: "weighing options"})
-	if len(m.transcript) != 2 || !strings.Contains(m.transcript[0], "thinking") {
+	if len(m.transcript) != 2 || !strings.Contains(m.transcript[0], "V.....") {
 		t.Errorf("reasoning should show a live marker, transcript=%v", m.transcript)
 	}
 	if !strings.Contains(m.transcript[1], "weighing options") {
@@ -812,8 +811,8 @@ func TestIngestEventRoutesByKind(t *testing.T) {
 	}{
 		{"dispatch", event.Event{Kind: event.ToolDispatch, Tool: event.Tool{Name: "read_file", Args: `{"path":"x"}`}}, "● Read(x)"},
 		{"blocked", event.Event{Kind: event.ToolResult, Tool: event.Tool{Name: "bash", Err: "blocked by permission policy"}}, "● Bash ⊘ blocked by permission policy"},
-		{"usage", event.Event{Kind: event.Usage, Usage: &provider.Usage{PromptTokens: 1000, CompletionTokens: 200, TotalTokens: 1200, CacheHitTokens: 900, CacheMissTokens: 100}}, "  · 1200 tok"},
-		{"usage-diagnostics", event.Event{Kind: event.Usage, Usage: &provider.Usage{PromptTokens: 1000, CompletionTokens: 200, TotalTokens: 1200}, CacheDiagnostics: &event.CacheDiagnostics{PrefixChanged: true, PrefixChangeReasons: []string{"tools"}}}, "cache prefix changed: tools"},
+		{"usage-hidden", event.Event{Kind: event.Usage, Usage: &provider.Usage{PromptTokens: 1000, CompletionTokens: 200, TotalTokens: 1200, CacheHitTokens: 900, CacheMissTokens: 100}}, ""},
+		{"usage-diagnostics-hidden", event.Event{Kind: event.Usage, Usage: &provider.Usage{PromptTokens: 1000, CompletionTokens: 200, TotalTokens: 1200}, CacheDiagnostics: &event.CacheDiagnostics{PrefixChanged: true, PrefixChangeReasons: []string{"tools"}}}, ""},
 		{"notice-info", event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: "compacted 8 messages → summary"}, "  · compacted 8 messages → summary"},
 		{"notice-warn", event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "response truncated: hit max output tokens"}, "  ! response truncated: hit max output tokens"},
 		{"phase", event.Event{Kind: event.Phase, Text: "planner · planning"}, "[planner · planning]"},
@@ -821,6 +820,12 @@ func TestIngestEventRoutesByKind(t *testing.T) {
 		m := newTestChatTUI()
 		m.ingestEvent(tc.ev)
 		got := *m.pendingCommit
+		if tc.want == "" {
+			if len(got) != 0 {
+				t.Errorf("%s: committed=%v, want usage details hidden", tc.name, got)
+			}
+			continue
+		}
 		if len(got) != 1 || !strings.Contains(got[0], tc.want) {
 			t.Errorf("%s: committed=%v, want a single line containing %q", tc.name, got, tc.want)
 		}

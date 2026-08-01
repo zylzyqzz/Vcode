@@ -21,7 +21,7 @@ func connectorBlock(lines []string) string {
 		return ""
 	}
 	indent := strings.Repeat(" ", len([]rune(connector)))
-	out := dim(connector) + lines[0]
+	out := themeFg(activeCLITheme.warn, connector) + lines[0]
 	for _, ln := range lines[1:] {
 		out += "\n" + indent + ln
 	}
@@ -78,20 +78,7 @@ var toolArgKey = map[string]string{
 // can tell reads (cyan) from writes (green), shell (yellow), process control
 // (magenta), and everything else (copper) at a glance.
 func toolDot(name string) string {
-	var c cliColor
-	switch toolCategory[name] {
-	case "read":
-		c = activeCLITheme.toolRead
-	case "write":
-		c = activeCLITheme.success
-	case "exec":
-		c = activeCLITheme.warn
-	case "proc":
-		c = activeCLITheme.toolProc
-	default:
-		c = activeCLITheme.accent
-	}
-	return themeFg(c, "●")
+	return themeFg(activeCLITheme.warn, "●")
 }
 
 var toolCategory = map[string]string{

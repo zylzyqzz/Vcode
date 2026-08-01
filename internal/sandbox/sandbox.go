@@ -38,3 +38,31 @@ type Spec struct {
 
 // Enforce reports whether the spec asks for confinement.
 func (s Spec) Enforce() bool { return s.Mode == "enforce" }
+
+// ModeStatus describes the effective security boundary for a configured mode.
+// "degraded" means the CLI is usable, but no OS-level jail is active.
+type ModeStatus struct {
+	Requested string
+	Effective string
+	Available bool
+	Degraded  bool
+	Reason    string
+}
+
+// Status resolves a configured mode without starting a process.
+func Status(mode string) ModeStatus {
+	switch mode {
+	case "enforce":
+		if Available() {
+			return ModeStatus{Requested: mode, Effective: "os", Available: true}
+		}
+		return ModeStatus{Requested: mode, Effective: "blocked", Reason: "no OS sandbox is available"}
+	case "off":
+		return ModeStatus{Requested: mode, Effective: "unconfined", Degraded: true, Reason: "sandbox explicitly disabled"}
+	default:
+		if Available() {
+			return ModeStatus{Requested: "auto", Effective: "os", Available: true}
+		}
+		return ModeStatus{Requested: "auto", Effective: "permission-gated", Degraded: true, Reason: "no OS sandbox is available; permission policy remains active"}
+	}
+}

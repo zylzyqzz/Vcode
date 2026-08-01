@@ -393,7 +393,8 @@ CJK 双宽字符，造成视觉错位。想保留旧的终端块状光标可设�
 建议使用绝对路径或 `${HOME}` / `${VAR}`，不要写 `~`，因为配置只做环境变量展开。
 `bash` 本身在 macOS 默认进沙盒（`[sandbox] bash`，Seatbelt）：命令只能写这些 root（外加临时目录与工具链缓存），
 OS 沙盒生效时也不能读取配置的 `forbid_read` roots，`[sandbox] network` 为真时才能联网；
-其它平台在没有可用 OS 沙盒时会回退为不沙盒运行（越界问一次与 Linux 支持见
+其它平台在没有可用 OS 沙盒时，`bash = "auto"` 会回退为权限确认模式并明确提示安全降级；
+使用 `bash = "enforce"` 可在无 OS 沙盒时拒绝执行（越界问一次与 Linux 支持见
 [`SPEC.md` §9](./SPEC.md#9-roadmap-not-in-current-scope)）。
 
 ## 插件（MCP）
@@ -479,7 +480,8 @@ compaction archive 和已保存事实；这些动态内容不会被塞进稳定�
 agent 发起的 `remember` 和 `forget` 每次都会要求新的人工确认，并在执行前展示将保存或归档的记忆摘要；
 Guardian 审查不能代替用户批准，非交互运行会拒绝这类工具而不是自动批准。
 0 结果会提示 agent 改用更少、更有区分度的词继续查。
-Memory v5 在 CLI/TUI、`Vcode serve` 和桌面端默认开启，因为这些入口共用同一套本地
+Memory v5 在 CLI/TUI 中默认关闭，可通过 `vcode config memory-v5` 或 `/memory-v5`
+主动开启；`Vcode serve` 仍可使用这套能力，因为这些入口共用同一套本地
 controller。它会把本地、按项目隔离的执行轨迹和编译器状态写在 Vcode home 下，并且只有
 历史结果产生可行动约束时，才把下一轮用户输入编译成精简 execution contract。早期轮次可能
 只写入轨迹而不注入任何内容。默认的 `verbosity = "observe"` 只做本地学习和内容无关指标，
