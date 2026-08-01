@@ -68,12 +68,12 @@ func TestUpdateNodeRecordsLifecycleEvent(t *testing.T) {
 
 func TestNodeSummaryAndIntegrationStatePersist(t *testing.T) {
 	s := NewStore(t.TempDir())
-	task, err := s.Create("persist result", ".", []Node{{ID: "build", Role: Build, Summary: "changed auth.go", Commit: "abc123", Integrated: true}})
+	task, err := s.Create("persist result", ".", []Node{{ID: "build", Role: Build, Summary: "changed auth.go", Commit: "abc123", Integrated: true, MaxSteps: 100, PromptTokens: 10, OutputTokens: 4, CachedTokens: 8}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := s.Get(task.ID)
-	if err != nil || loaded.Nodes[0].Summary != "changed auth.go" || !loaded.Nodes[0].Integrated {
+	if err != nil || loaded.Nodes[0].Summary != "changed auth.go" || !loaded.Nodes[0].Integrated || loaded.Nodes[0].CachedTokens != 8 {
 		t.Fatalf("loaded node=%+v err=%v", loaded.Nodes[0], err)
 	}
 }

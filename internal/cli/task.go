@@ -142,7 +142,7 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 		if workspace == "" {
 			workspace = task.ProjectRoot
 		}
-		ctrl, setupErr := setupWithWorkspaceRole(ctx, node.Model, node.MaxAttempts, true, sink, workspace, role)
+		ctrl, setupErr := setupWithWorkspaceRole(ctx, node.Model, node.MaxSteps, true, sink, workspace, role)
 		if setupErr != nil {
 			return taskgraph.NodeResult{Err: setupErr}
 		}
@@ -178,7 +178,13 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 				return taskgraph.NodeResult{Workspace: workspace, ChangedFiles: changed, Verification: v, Err: changedErr}
 			}
 		}
-		return taskgraph.NodeResult{Workspace: workspace, Commit: commit, ChangedFiles: changed, Summary: lastAssistantSummary(ctrl.History()), Verification: v, Message: "agent completed and project verification passed"}
+		result := taskgraph.NodeResult{Workspace: workspace, Commit: commit, ChangedFiles: changed, Summary: lastAssistantSummary(ctrl.History()), Verification: v, Message: "agent completed and project verification passed"}
+		if usage := ctrl.LastUsage(); usage != nil {
+			result.PromptTokens = usage.PromptTokens
+			result.OutputTokens = usage.CompletionTokens
+			result.CachedTokens = usage.CacheHitTokens
+		}
+		return result
 	})
 	_ = taskgraph.NewIndex(config.VcodeHomeDir()).Upsert(task)
 	if err != nil {
@@ -239,6 +245,7 @@ func planTask(store *taskgraph.Store, global *taskgraph.Index, id string) int {
 	if len(task.Nodes) == 0 {
 		task.Nodes = defaultTaskNodes(task.Goal)
 	}
+	applyNodeBudgets(task.Nodes)
 	task.Status = taskgraph.Blocked
 	if err := store.Save(task); err != nil {
 		fmt.Fprintln(stderr(), "error:", err)
@@ -274,12 +281,32 @@ func approveTask(store *taskgraph.Store, global *taskgraph.Index, id string) int
 }
 
 func defaultTaskNodes(goal string) []taskgraph.Node {
-	return []taskgraph.Node{
+	nodes := []taskgraph.Node{
 		{ID: "explore-code", Title: "探索代码与项目结构", Role: taskgraph.Explore, Prompt: fmt.Sprintf("用只读方式分析项目结构、相关文件、现有约束和当前实现，围绕目标“%s”列出事实、风险与需要修改的范围。不得写入文件。", goal)},
 		{ID: "inspect-tests", Title: "检查测试与验证入口", Role: taskgraph.Review, Prompt: fmt.Sprintf("用只读方式查找项目已有测试、构建、静态检查和发布脚本，判断目标“%s”应如何验证，并指出当前覆盖缺口。不得写入文件。", goal)},
 		{ID: "plan", Title: "制定中文实施计划", Role: taskgraph.Plan, DependsOn: []string{"explore-code", "inspect-tests"}, Prompt: fmt.Sprintf("综合两个只读角色的报告，用中文说明要解决的问题、最终目标、涉及模块和文件；拆成 2—6 个可验证步骤，并为每步写明动作、原因和验证方式。不得写入文件。目标：%s", goal)},
 		{ID: "build", Title: "实现目标并保持最小改动", Role: taskgraph.Build, DependsOn: []string{"plan"}, Prompt: fmt.Sprintf("按已确认的中文计划实现目标“%s”。只修改必要文件，保留兼容性，完成后列出变更文件、风险和可复现验证命令。", goal)},
 		{ID: "verify", Title: "验证实现并汇总证据", Role: taskgraph.Test, DependsOn: []string{"build"}, Prompt: fmt.Sprintf("针对目标“%s”执行项目已有的测试、构建、静态检查和必要 smoke test；不要声称未执行的检查成功，按 VERIFIED、PARTIAL 或 UNVERIFIED 汇总证据。", goal)},
+	}
+	applyNodeBudgets(nodes)
+	return nodes
+}
+
+func applyNodeBudgets(nodes []taskgraph.Node) {
+	for i := range nodes {
+		if nodes[i].MaxSteps > 0 {
+			continue
+		}
+		switch nodes[i].Role {
+		case taskgraph.Explore, taskgraph.Review:
+			nodes[i].MaxSteps = 32
+		case taskgraph.Plan:
+			nodes[i].MaxSteps = 48
+		case taskgraph.Build:
+			nodes[i].MaxSteps = 100
+		case taskgraph.Test:
+			nodes[i].MaxSteps = 64
+		}
 	}
 }
 

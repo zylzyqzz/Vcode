@@ -21,9 +21,20 @@ func TestDefaultTaskNodesAreChineseAndOrdered(t *testing.T) {
 		if i == 2 && len(node.DependsOn) != 2 {
 			t.Fatalf("plan dependencies=%v, want two research roles", node.DependsOn)
 		}
+		if node.MaxSteps <= 0 {
+			t.Fatalf("node %s has no long-task step budget", node.ID)
+		}
 		if i >= 3 && (len(node.DependsOn) != 1 || node.DependsOn[0] != nodes[i-1].ID) {
 			t.Fatalf("node %d dependency=%v, want %s", i, node.DependsOn, nodes[i-1].ID)
 		}
+	}
+}
+
+func TestApplyNodeBudgetsDoesNotOverwriteExplicitLimit(t *testing.T) {
+	nodes := []taskgraph.Node{{ID: "build", Role: taskgraph.Build, MaxSteps: 7}, {ID: "plan", Role: taskgraph.Plan}}
+	applyNodeBudgets(nodes)
+	if nodes[0].MaxSteps != 7 || nodes[1].MaxSteps <= 0 {
+		t.Fatalf("budgets=%+v", nodes)
 	}
 }
 

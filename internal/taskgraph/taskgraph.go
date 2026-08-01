@@ -60,6 +60,7 @@ type Node struct {
 	Status       Status            `json:"status"`
 	Attempt      int               `json:"attempt"`
 	MaxAttempts  int               `json:"max_attempts"`
+	MaxSteps     int               `json:"max_steps,omitempty"`
 	Model        string            `json:"model,omitempty"`
 	Effort       string            `json:"effort,omitempty"`
 	Workspace    string            `json:"workspace,omitempty"`
@@ -67,6 +68,9 @@ type Node struct {
 	Integrated   bool              `json:"integrated,omitempty"`
 	ChangedFiles []string          `json:"changed_files,omitempty"`
 	Summary      string            `json:"summary,omitempty"`
+	PromptTokens int               `json:"prompt_tokens,omitempty"`
+	OutputTokens int               `json:"output_tokens,omitempty"`
+	CachedTokens int               `json:"cached_tokens,omitempty"`
 	Artifacts    []Artifact        `json:"artifacts,omitempty"`
 	Verification *Verification     `json:"verification,omitempty"`
 	Error        string            `json:"error,omitempty"`

@@ -18,6 +18,9 @@ type NodeResult struct {
 	Commit       string
 	ChangedFiles []string
 	Summary      string
+	PromptTokens int
+	OutputTokens int
+	CachedTokens int
 	Artifacts    []Artifact
 	Verification *Verification
 	Message      string
@@ -126,6 +129,9 @@ func (s Scheduler) applyResult(task *Task, rr nodeRunResult) error {
 		}
 		n.ChangedFiles = rr.result.ChangedFiles
 		n.Summary = rr.result.Summary
+		n.PromptTokens = rr.result.PromptTokens
+		n.OutputTokens = rr.result.OutputTokens
+		n.CachedTokens = rr.result.CachedTokens
 		n.Commit = rr.result.Commit
 		n.Artifacts = rr.result.Artifacts
 		n.Verification = rr.result.Verification
