@@ -62,9 +62,9 @@ func writeMCPServer(b *strings.Builder, width int, s plugin.ServerStatus, prompt
 	if transport == "" {
 		transport = "unknown"
 	}
-	meta := fmt.Sprintf("(%s)  %s · %s · %s", transport, countText(s.Tools, "tool"), countText(len(prompts), "prompt"), countText(len(resources), "resource"))
+	meta := fmt.Sprintf("(%s)  %s 路 %s 路 %s", transport, countText(s.Tools, "tool"), countText(len(prompts), "prompt"), countText(len(resources), "resource"))
 	name := viewCompactText(s.Name, viewBudget(width, 4+2+1+visibleWidth(meta)))
-	fmt.Fprintf(b, "    %s %s %s\n", accent("✓"), bold(name), viewMeta(meta))
+	fmt.Fprintf(b, "    %s %s %s\n", accent("鉁?), bold(name), viewMeta(meta))
 	if len(prompts) > 0 {
 		writeMCPPromptList(b, width, prompts)
 	}
@@ -78,7 +78,11 @@ func writeMCPFailure(b *strings.Builder, width int, f plugin.Failure) {
 	if transport == "" {
 		transport = "unknown"
 	}
-	meta := fmt.Sprintf("(%s)  %s", transport, oneLineText(f.Error))
+	code := strings.TrimSpace(f.Code)
+	if code == "" {
+		code = "error"
+	}
+	meta := fmt.Sprintf("(%s/%s)  %s", transport, code, oneLineText(f.Error))
 	name := viewCompactText(f.Name, viewBudget(width, 4+2+1+visibleWidth(meta)))
 	fmt.Fprintf(b, "    %s %s %s\n", yellow("!"), bold(name), viewMeta(viewCompactText(meta, viewBudget(width, 10+visibleWidth(name)))))
 }
@@ -161,7 +165,7 @@ func compactEnd(s string, maxWidth int) string {
 		return s
 	}
 	if maxWidth <= 1 {
-		return "…"
+		return "鈥?
 	}
 	var out strings.Builder
 	for _, r := range s {
@@ -171,7 +175,7 @@ func compactEnd(s string, maxWidth int) string {
 		}
 		out.WriteRune(r)
 	}
-	return out.String() + "…"
+	return out.String() + "鈥?
 }
 
 func compactMiddle(s string, maxWidth int) string {
@@ -186,7 +190,7 @@ func compactMiddle(s string, maxWidth int) string {
 	rightWidth := keep - leftWidth
 	left := takeLeftWidth(s, leftWidth)
 	right := takeRightWidth(s, rightWidth)
-	return left + "…" + right
+	return left + "鈥? + right
 }
 
 func takeLeftWidth(s string, maxWidth int) string {
