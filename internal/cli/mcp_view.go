@@ -78,7 +78,11 @@ func writeMCPFailure(b *strings.Builder, width int, f plugin.Failure) {
 	if transport == "" {
 		transport = "unknown"
 	}
-	meta := fmt.Sprintf("(%s)  %s", transport, oneLineText(f.Error))
+	code := strings.TrimSpace(f.Code)
+	if code == "" {
+		code = "error"
+	}
+	meta := fmt.Sprintf("(%s/%s)  %s", transport, code, oneLineText(f.Error))
 	name := viewCompactText(f.Name, viewBudget(width, 4+2+1+visibleWidth(meta)))
 	fmt.Fprintf(b, "    %s %s %s\n", yellow("!"), bold(name), viewMeta(viewCompactText(meta, viewBudget(width, 10+visibleWidth(name)))))
 }
