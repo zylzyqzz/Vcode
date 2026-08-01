@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <a href="./README.zh-CN.md">绠€浣撲腑鏂?/a> 路
-  <a href="./docs/GUIDE.md">Guide</a> 路
+  <a href="./README.zh-CN.md">简体中文</a> ·
+  <a href="./docs/GUIDE.md">Guide</a> ·
   <a href="./docs/SPEC.md">Architecture</a>
 </p>
 
@@ -152,7 +152,7 @@ integration is explicit so a conflict blocks the task instead of silently
 overwriting the main worktree:
 
 ```sh
-vcode task create "瀹炵幇骞堕獙璇佺敤鎴疯璇佹ā鍧?
+vcode task create "实现并验证用户认证模块"
 vcode task show <id> --json
 vcode task run <id>
 vcode task merge <id>
