@@ -16,6 +16,8 @@ Vcode is a fast, configurable AI coding agent that lives in your terminal. It co
 
 The default experience is deliberately compact: the terminal shows the current activity, a short tool summary, the final answer, and a small status line. Detailed reasoning and tool output remain available when you expand them with `Ctrl+O`.
 
+For long-running work, Vcode adds a durable multi-agent control plane: a Coordinator can expand the task graph, route work to role-specific Agents, persist shared facts and messages, recover from failures, and record checkpoints. This is designed for software projects that need to continue after a terminal restart rather than only for one-shot chat turns.
+
 ## What Vcode does
 
 - **Builds and edits projects** with read, search, write, patch, and shell tools.
@@ -24,6 +26,7 @@ The default experience is deliberately compact: the terminal shows the current a
 - **Extends through MCP and Skills** without making optional integrations part of startup cost.
 - **Verifies completed work** with project-aware checks for Go, Node.js, Python, Rust, and configured project commands.
 - **Makes safety visible** with permission prompts, path restrictions, and explicit Windows sandbox fallback states.
+- **Coordinates long tasks** with role-specific Agents, parallel worktrees, durable mailboxes, failure classification, checkpoints, and verification evidence.
 
 ## Install
 
@@ -93,6 +96,8 @@ vcode task global              List tasks across projects
 vcode task global --json       Emit the global task index as JSON
 vcode task show <id>           Show task and node state (`--json` supported)
 vcode task logs <id>           Show task lifecycle events (`--json` supported)
+vcode task events <id>         Show structured Agent/task events (`--json` supported)
+vcode task agents <id>         Show Agent heartbeats and states (`--json` supported)
 vcode task plan <id>           Generate a Chinese read-only execution plan
 vcode task approve <id>        Approve the plan before any write-capable node
 vcode task resume <id>         Recover interrupted work
@@ -161,6 +166,26 @@ vcode task merge <id>
 Each node records changed files, artifacts, retries, and verification evidence.
 The final task outcome is `VERIFIED`, `PARTIAL`, or `UNVERIFIED`; a missing or
 failed check is never presented as a successful completion.
+
+### Multi-agent long tasks
+
+The durable graph separates policy from execution. The Coordinator proposes
+validated actions such as adding a diagnostic node, retrying a transient
+failure, or pausing for operator input. Agents communicate through a durable
+mailbox and publish structured facts to the task Blackboard. Each writable
+node gets an isolated Git worktree; integration reports conflicts and aborts
+the cherry-pick so the main project remains clean. Use these commands while a
+long task is running:
+
+```sh
+vcode task show <id> --json
+vcode task agents <id> --json
+vcode task events <id> --json
+```
+
+Task checkpoints preserve node state and shared facts. They can be restored by
+the task runtime after an interrupted process, while the audit events remain
+available for diagnosis.
 
 ## Development
 
