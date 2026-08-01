@@ -34,12 +34,18 @@ func taskCommand(args []string) int {
 			return 2
 		}
 		return showTask(store, args[1], containsTaskArg(args[2:], "--json"))
-	case "logs":
+	case "logs", "events":
 		if len(args) < 2 {
-			fmt.Fprintln(stderr(), "usage: vcode task logs <task-id>")
+			fmt.Fprintln(stderr(), "usage: vcode task events <task-id> [--json]")
 			return 2
 		}
 		return showTaskLogs(store, args[1], containsTaskArg(args[2:], "--json"))
+	case "agents":
+		if len(args) < 2 {
+			fmt.Fprintln(stderr(), "usage: vcode task agents <task-id> [--json]")
+			return 2
+		}
+		return showTaskAgents(store, args[1], containsTaskArg(args[2:], "--json"))
 	case "create":
 		goal := strings.TrimSpace(strings.Join(args[1:], " "))
 		if goal == "" {
@@ -85,7 +91,7 @@ func taskCommand(args []string) int {
 		}
 		return mergeTaskNode(store, global, args[1], args[2:])
 	default:
-		fmt.Fprintln(stderr(), "usage: vcode task [list|show|create|plan|approve|resume|retry|pause|cancel|run|merge]")
+		fmt.Fprintln(stderr(), "usage: vcode task [list|show|create|plan|approve|resume|retry|pause|cancel|run|merge|events|agents]")
 		return 2
 	}
 }
@@ -563,6 +569,34 @@ func showTaskLogs(store *taskgraph.Store, id string, asJSON bool) int {
 	}
 	for _, e := range t.Events {
 		fmt.Printf("%s %-18s %-12s %-8s %s\n", e.Timestamp.Local().Format("2006-01-02 15:04:05"), e.Type, e.NodeID, e.Role, e.Message)
+	}
+	return 0
+}
+
+func showTaskAgents(store *taskgraph.Store, id string, asJSON bool) int {
+	t, err := store.Get(id)
+	if err != nil {
+		fmt.Fprintln(stderr(), "error:", err)
+		return 1
+	}
+	if asJSON {
+		data, marshalErr := json.MarshalIndent(t.Agents, "", "  ")
+		if marshalErr != nil {
+			fmt.Fprintln(stderr(), "error:", marshalErr)
+			return 1
+		}
+		fmt.Println(string(data))
+		return 0
+	}
+	if len(t.Agents) == 0 {
+		fmt.Println("no agent heartbeats")
+		return 0
+	}
+	for _, agent := range t.Agents {
+		fmt.Printf("%-20s %-12s %-12s %s\n", agent.AgentID, agent.Role, agent.State, agent.LastSeen.Local().Format("2006-01-02 15:04:05"))
+		if agent.Error != "" {
+			fmt.Printf("  error: %s\n", agent.Error)
+		}
 	}
 	return 0
 }

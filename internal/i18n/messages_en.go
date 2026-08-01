@@ -394,7 +394,7 @@ Usage:
   vcode [--model NAME] [-c|--continue] [--resume] [--yolo] [--dir PATH]   interactive session (multi-turn; -c resumes the latest, --resume picks one)
   vcode run  [--model NAME] [--max-steps N] [-c|--continue] [--resume PATH] <task>   run one task and exit
   vcode review [--base BRANCH] [--commit SHA] [--model NAME]  AI-powered code review on local diffs
-  vcode task list|global|create|show|logs             inspect durable task graph state
+ vcode task list|global|create|show|logs|events|agents inspect durable task graph and Agent state
   vcode task plan|approve|run|resume|retry <id>       plan, approve, execute, or recover a task
   vcode task pause|cancel <id> [node-id]              pause or cancel task execution
   vcode task merge <id> [node-id]                     integrate committed worktree changes

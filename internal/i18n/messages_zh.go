@@ -406,7 +406,7 @@ var Chinese = Messages{
   vcode doctor [--json]                              输出脱敏的本地诊断信息
   vcode bot start|doctor|weixin-login                多渠道 IM bot 网关
   vcode upgrade [--check] [--force]                   自更新到最新版本（也可用：vcode update）
-  vcode task list|global|create|show|logs             查看持久化任务图状态
+  vcode task list|global|create|show|logs|events|agents 查看任务图、事件和 Agent 状态
   vcode task plan|approve|run|resume|retry <id>       规划、批准、执行或恢复任务
   vcode task pause|cancel <id> [node-id]              暂停或取消任务执行
   vcode task merge <id> [node-id]                     集成 worktree 中已提交的改动

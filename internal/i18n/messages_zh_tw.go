@@ -354,7 +354,7 @@ var ChineseTraditional = Messages{
   vcode doctor [--json]                              輸出脫敏的本機診斷資訊
   vcode bot start|doctor|weixin-login                多管道 IM bot 閘道
   vcode upgrade [--check] [--force]                   自更新至最新版本（也可用：vcode update）
-  vcode task list|global|create|show|logs             查看持久化任務圖狀態
+  vcode task list|global|create|show|logs|events|agents 查看任務圖、事件和 Agent 狀態
   vcode task plan|approve|run|resume|retry <id>       規劃、批准、執行或恢復任務
   vcode task pause|cancel <id> [node-id]              暫停或取消任務執行
   vcode task merge <id> [node-id]                     整合 worktree 中已提交的修改

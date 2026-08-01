@@ -103,3 +103,19 @@ func TestTaskJSONListAndLogsAreMachineReadable(t *testing.T) {
 		t.Fatalf("logs json=%q err=%v", logs, err)
 	}
 }
+
+func TestTaskAgentsJSONIsMachineReadable(t *testing.T) {
+	store := taskgraph.NewStore(t.TempDir())
+	task, err := store.Create("agents", ".", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Heartbeat(&task, taskgraph.AgentPresence{AgentID: "builder", Role: taskgraph.Build, State: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	agents := captureStdout(t, func() { showTaskAgents(store, task.ID, true) })
+	var got []taskgraph.AgentPresence
+	if err := json.Unmarshal([]byte(agents), &got); err != nil || len(got) != 1 || got[0].AgentID != "builder" {
+		t.Fatalf("agents json=%q err=%v", agents, err)
+	}
+}
