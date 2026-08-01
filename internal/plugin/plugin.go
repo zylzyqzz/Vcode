@@ -550,6 +550,7 @@ type ServerStatus struct {
 type Failure struct {
 	Name      string
 	Transport string
+	Code      string
 	Error     string
 }
 
@@ -613,7 +614,7 @@ func (h *Host) RecordFailure(s Spec, err error) {
 	if tt == "" {
 		tt = "stdio"
 	}
-	f := Failure{Name: s.Name, Transport: tt, Error: summarizeFailureError(err)}
+	f := Failure{Name: s.Name, Transport: tt, Code: classifyFailure(err), Error: summarizeFailureError(err)}
 	for i := range h.failures {
 		if h.failures[i].Name == s.Name {
 			h.failures[i] = f
@@ -1205,6 +1206,30 @@ func summarizeFailureError(err error) string {
 		msg = msg[:max] + "..."
 	}
 	return msg
+}
+
+func classifyFailure(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "cancelled"
+	}
+	msg := strings.ToLower(err.Error())
+	for _, marker := range []string{"401", "403", "unauthorized", "forbidden", "api key", "authentication"} {
+		if strings.Contains(msg, marker) {
+			return "auth"
+		}
+	}
+	for _, marker := range []string{"connect", "connection", "broken pipe", "eof", "not found", "spawn", "read:", "write:"} {
+		if strings.Contains(msg, marker) {
+			return "transport"
+		}
+	}
+	return "protocol"
 }
 
 // --- JSON-RPC message types (shared by every transport) ---
