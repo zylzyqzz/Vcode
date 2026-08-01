@@ -1,93 +1,128 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="Vcode" width="640"/>
+  <img src="docs/logo.svg" alt="Vcode" width="320"/>
 </p>
 
 <p align="center">
-  <strong>English</strong>
-  &nbsp;·&nbsp;
-  <a href="./README.zh-CN.md">简体中文</a>
-  &nbsp;·&nbsp;
-  <a href="./docs/GUIDE.md">Guide</a>
-  &nbsp;·&nbsp;
-  <a href="./docs/SPEC.md">Spec</a>
+  <strong>Terminal-first coding agent for Windows, Linux, and macOS.</strong>
 </p>
 
-<p align="center">A DeepSeek-native AI coding agent for your terminal.</p>
-<p align="center">A config- and plugin-driven harness — a single static Go binary, tuned around DeepSeek's prefix cache so token costs stay low across long sessions.</p>
+<p align="center">
+  <a href="./README.zh-CN.md">简体中文</a> ·
+  <a href="./docs/GUIDE.md">Guide</a> ·
+  <a href="./docs/SPEC.md">Architecture</a>
+</p>
 
-<br/>
+Vcode is a fast, configurable AI coding agent that lives in your terminal. It combines an agent loop, file and shell tools, MCP, Skills, session recovery, and project verification in one Go binary.
 
-## Features
+The default experience is deliberately compact: the terminal shows the current activity, a short tool summary, the final answer, and a small status line. Detailed reasoning and tool output remain available when you expand them with `Ctrl+O`.
 
-- **Config-driven.** Providers, the agent, enabled tools, and plugins are all declared in `vcode.toml`. No hardcoded models.
-- **Multi-model & composable.** DeepSeek ships as a preset; any OpenAI-compatible endpoint is a config entry, not new code. Optionally run two models together (executor + planner) in separate, cache-stable sessions.
-- **Plugin-driven.** External tools run as subprocesses over stdio JSON-RPC (MCP-compatible). Built-in tools self-register at compile time.
-- **Cache-aware context maintenance.** Startup injects a small stable environment summary, stale tool output is snipped/pruned before summary compaction, and the built-in tool schema contract is documented for regression review.
-- **Zero-friction distribution.** `CGO_ENABLED=0` single binary; cross-compile to six targets with one command. The only dependency is a TOML parser.
+## What Vcode does
+
+- **Builds and edits projects** with read, search, write, patch, and shell tools.
+- **Works well with DeepSeek** and keeps the provider layer open to other OpenAI-compatible APIs.
+- **Understands long sessions** with checkpoints, rewind, fork, context compaction, and cache-aware prompts.
+- **Extends through MCP and Skills** without making optional integrations part of startup cost.
+- **Verifies completed work** with project-aware checks for Go, Node.js, Python, Rust, and configured project commands.
+- **Makes safety visible** with permission prompts, path restrictions, and explicit Windows sandbox fallback states.
 
 ## Install
 
-```sh
-npm i -g Vcode                  # any OS; pulls the prebuilt native binary
-brew install esengine/Vcode/Vcode   # macOS
-```
-
-Prebuilt archives (`darwin|linux|windows × amd64|arm64`) and `SHA256SUMS` are on every [GitHub release](https://github.com/zylzyqzz/Vcode-go/releases).
-
-### Code signing
-
-Windows builds are code-signed with a free certificate provided by the [SignPath Foundation](https://signpath.org/), with signing through [SignPath.io](https://signpath.io/).
-
-### Build from source
+Download a release binary for your platform, or build from source with Go 1.24+:
 
 ```sh
-make build      # -> bin/Vcode(.exe)
-make cross      # -> dist/ (darwin|linux|windows × amd64|arm64)
+make build
+./bin/vcode version
 ```
 
-## Quick start
+Cross-platform release artifacts can be built with:
 
 ```sh
-Vcode setup                      # config wizard → ./vcode.toml
-export DEEPSEEK_API_KEY=sk-...      # or let setup save it to Vcode home .env
-Vcode                            # then run /init to generate AGENTS.md (project memory)
-Vcode run "implement the TODOs in main.go"
-Vcode run --model deepseek-pro "add unit tests for this function"
-echo "explain this code" | Vcode run
+make cross
 ```
 
-`vcode run` automatically detects common project checks and reports `VERIFIED`,
-`PARTIAL`, or `UNVERIFIED` when the task ends. Use `--no-verify` for a deliberate
-skip. Bash defaults to `sandbox.bash = "auto"`: Windows remains usable without
-an OS jail, but Vcode reports that the permission policy is the active boundary.
+Vcode targets Windows, Linux, and macOS on amd64 and arm64. The desktop application is not part of the CLI product path.
+
+## Quick start with DeepSeek
+
+Create a project-level `vcode.toml`:
+
+```toml
+default_model = "deepseek-v4-flash"
+
+[[providers]]
+name = "deepseek"
+kind = "openai"
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-flash"
+api_key_env = "DEEPSEEK_API_KEY"
+
+[sandbox]
+bash = "auto"
+```
+
+Set the API key in your environment:
+
+```powershell
+$env:DEEPSEEK_API_KEY = "sk-..."
+vcode
+```
+
+```sh
+export DEEPSEEK_API_KEY=sk-...
+vcode
+```
+
+For a guided setup, run:
+
+```sh
+vcode setup
+```
+
+## Common commands
+
+```text
+vcode                         Start an interactive session
+vcode run "fix the failing tests"  Run one task and verify the project
+vcode review                  Review the current worktree
+vcode doctor                  Diagnose configuration, model, tools, and safety
+vcode doctor --json           Print machine-readable diagnostics
+vcode setup                   Create or migrate local configuration
+```
+
+Inside an interactive session:
+
+- `Ctrl+O` expands or collapses the latest reasoning or tool output.
+- `Ctrl+B` remains available for shell output compatibility.
+- `/plan` starts a Chinese, read-only planning flow and waits for approval.
+- `/rewind`, `/resume`, and `/fork` manage recoverable session history.
+
+## Safety model
+
+`[sandbox].bash` supports three modes:
+
+- `auto`: use an OS sandbox when available; otherwise use path constraints, dangerous-command blocking, and approval prompts.
+- `enforce`: refuse Bash execution when an OS-level sandbox is unavailable.
+- `off`: disable sandboxing while retaining permission prompts and working-directory warnings.
+
+On Windows, `auto` never pretends that a fallback policy is an OS-level jail. Use `vcode doctor --json` to inspect the effective mode and the reason for any downgrade.
 
 ## Configuration
 
-A minimal `vcode.toml` — one provider and a default model — is enough to start:
+Configuration is resolved in this order:
 
-```toml
-default_model = "deepseek-flash"
+1. command-line flags;
+2. project-level `./vcode.toml`;
+3. user-level configuration;
+4. built-in defaults.
 
-[[providers]]
-name        = "deepseek-flash"
-kind        = "openai"
-base_url    = "https://api.deepseek.com"
-model       = "deepseek-v4-flash"
-api_key_env = "DEEPSEEK_API_KEY"
+See the [CLI guide](./docs/GUIDE.md) for providers, permissions, MCP, Skills, sessions, and configuration paths. Secrets should be supplied through environment variables or the Vcode user `.env` file; do not commit API keys.
+
+## Development
+
+```sh
+go test ./internal/config ./internal/sandbox ./internal/doctor ./internal/verify ./internal/planmode
+go test ./internal/cli -run 'Test(CtrlO|ReasoningSummary|Tool|Chooser)' -count=1
+go build ./cmd/vcode
 ```
 
-Resolution order is **flag > `./vcode.toml` > the user config file > built-in defaults**; starting with **Vcode v1.8.1**, the user file lives at `~/.Vcode/config.toml` on macOS/Linux and `%AppData%\Vcode\config.toml` on Windows. See **[Configuration paths](./docs/CONFIG_PATHS.md)** for migration details and the full `config.toml` / `.env` structure. Provider entries name secrets with `api_key_env`; the secret values themselves live in Vcode's global `<Vcode home>/.env`, shared by CLI. Permissions, the sandbox, plugins (MCP), slash commands, `@` references, and two-model setup are all in the **[Guide](./docs/GUIDE.md)**.
-
-## Documentation
-
-- **[Guide](./docs/GUIDE.md)** — configuration, permissions & sandbox, plugins (MCP), slash commands, `@` references, two-model collaboration.
-- **[Bot guide](./docs/BOT_GUIDE.md)** — connect Feishu, Lark, and WeChat bots from the desktop app, then use approvals, YOLO, and commands from IM.
-- **[Spec](./docs/SPEC.md)** — engineering contract: architecture, registries, data types, and roadmap.
-- **[Tool contract](./docs/TOOL_CONTRACT.md)** — provider-visible built-in tool names, read-only flags, and schema snapshot guard.
-- **[Checkpoints & rewind](./docs/CHECKPOINTS.md)** — the snapshot-based edit safety net (Esc-Esc / `/rewind`).
-
-<br/>
-
-## License
-
-MIT — see [LICENSE](./LICENSE)
+Vcode is released under the MIT License. See [LICENSE](./LICENSE).

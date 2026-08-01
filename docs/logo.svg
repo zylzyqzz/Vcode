@@ -1,14 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="170" viewBox="0 0 760 170" role="img" aria-label="Vcode — DeepSeek-native agent framework">
-  <title>Vcode</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120" role="img" aria-labelledby="title desc">
+  <title id="title">Vcode</title>
+  <desc id="desc">A golden V mark for Vcode, a terminal coding agent.</desc>
   <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="50%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#8b5cf6"/>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff1a8"/>
+      <stop offset="0.38" stop-color="#ffd700"/>
+      <stop offset="1" stop-color="#b8860b"/>
     </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
-  <rect x="15" y="15" width="140" height="140" rx="30" fill="url(#g)"/>
-  <path fill="#fff" d="M50,50 h20 l35,55 l35,-55 h20 l-55,85 z"/>
-  <text x="185" y="108" font-family="ui-monospace, monospace" font-size="72" font-weight="800" fill="url(#g)" letter-spacing="4">VCODE</text>
-  <text x="188" y="142" font-family="ui-monospace, monospace" font-size="15" fill="#64748b" letter-spacing="0.5">DeepSeek-native agent framework  ·  cache-first loop</text>
+  <path d="M34 24 L76 91 L118 24" fill="none" stroke="#6b5311" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" opacity=".45" filter="url(#glow)"/>
+  <path d="M34 24 L76 91 L118 24" fill="none" stroke="url(#gold)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="153" y="76" fill="url(#gold)" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="42" font-weight="700" letter-spacing="2">vcode</text>
 </svg>
