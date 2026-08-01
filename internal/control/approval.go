@@ -278,14 +278,14 @@ func normalizePlanModeReadOnlyCommandPrefix(prefix string) string {
 // --- decision helpers (caller holds a.mu) ---
 
 func (a *approvalManager) bypassAllowsLocked(tool string) bool {
-	if requiresFreshApprovalTool(tool) && tool != planApprovalTool {
+	if requiresFreshApprovalTool(tool) {
 		return false
 	}
 	return a.toolApprovalMode == ToolApprovalYolo || a.planAutoApprove
 }
 
 func (a *approvalManager) autoApprovalWouldAllowLocked(tool, subject string) bool {
-	if requiresFreshApprovalTool(tool) && tool != planApprovalTool {
+	if requiresFreshApprovalTool(tool) {
 		return false
 	}
 	policy := a.policy
@@ -294,7 +294,7 @@ func (a *approvalManager) autoApprovalWouldAllowLocked(tool, subject string) boo
 }
 
 func (a *approvalManager) sessionGrantAllowsLocked(tool, subject string) bool {
-	if requiresFreshApprovalTool(tool) && tool != planApprovalTool {
+	if requiresFreshApprovalTool(tool) {
 		return false
 	}
 	for rule := range a.granted {
