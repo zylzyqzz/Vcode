@@ -16,6 +16,14 @@ type Manager struct {
 	Root        string
 }
 
+type MergeReport struct {
+	Commit        string   `json:"commit"`
+	Merged        bool     `json:"merged"`
+	Aborted       bool     `json:"aborted"`
+	ConflictFiles []string `json:"conflict_files,omitempty"`
+	Error         string   `json:"error,omitempty"`
+}
+
 func NewManager(projectRoot string) *Manager {
 	return &Manager{ProjectRoot: projectRoot, Root: filepath.Join(projectRoot, ".vcode", "worktrees")}
 }
@@ -112,20 +120,47 @@ func (m *Manager) Commit(ctx context.Context, taskID, nodeID, message string) (s
 }
 
 func (m *Manager) MergeCommit(ctx context.Context, commit string) error {
-	commit = strings.TrimSpace(commit)
-	if commit == "" {
-		return errors.New("commit is required")
+	report, err := m.MergeCommitReport(ctx, commit)
+	if err != nil {
+		return err
 	}
-	if err := m.EnsureProjectClean(ctx); err != nil {
-		return fmt.Errorf("integration requires a clean project worktree: %w", err)
-	}
-	if err := runGit(ctx, m.ProjectRoot, "cherry-pick", commit); err != nil {
-		// Abort only an in-progress cherry-pick. If Git rejected before it
-		// started, abort is harmless and leaves the target worktree clean.
-		_ = runGit(ctx, m.ProjectRoot, "cherry-pick", "--abort")
-		return fmt.Errorf("merge commit %s: %w", commit, err)
+	if !report.Merged {
+		return fmt.Errorf("merge commit %s was not applied", commit)
 	}
 	return nil
+}
+
+// MergeCommitReport makes integration failures actionable for a Coordinator:
+// conflicting paths are captured before cherry-pick --abort restores the main
+// worktree. The old MergeCommit API remains as a strict compatibility wrapper.
+func (m *Manager) MergeCommitReport(ctx context.Context, commit string) (MergeReport, error) {
+	report := MergeReport{Commit: strings.TrimSpace(commit)}
+	commit = strings.TrimSpace(commit)
+	if commit == "" {
+		return report, errors.New("commit is required")
+	}
+	if err := m.EnsureProjectClean(ctx); err != nil {
+		report.Error = err.Error()
+		return report, fmt.Errorf("integration requires a clean project worktree: %w", err)
+	}
+	if err := runGit(ctx, m.ProjectRoot, "cherry-pick", commit); err != nil {
+		if conflicts, conflictErr := runGitOutput(ctx, m.ProjectRoot, "diff", "--name-only", "--diff-filter=U"); conflictErr == nil {
+			for _, path := range strings.Split(conflicts, "\n") {
+				if path = strings.TrimSpace(path); path != "" {
+					report.ConflictFiles = append(report.ConflictFiles, path)
+				}
+			}
+		}
+		report.Error = err.Error()
+		// Abort only an in-progress cherry-pick. If Git rejected before it
+		// started, abort is harmless and leaves the target worktree clean.
+		if abortErr := runGit(ctx, m.ProjectRoot, "cherry-pick", "--abort"); abortErr == nil {
+			report.Aborted = true
+		}
+		return report, fmt.Errorf("merge commit %s: %w", commit, err)
+	}
+	report.Merged = true
+	return report, nil
 }
 
 func runGit(ctx context.Context, dir string, args ...string) error {

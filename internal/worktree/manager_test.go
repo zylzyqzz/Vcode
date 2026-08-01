@@ -153,6 +153,46 @@ func TestMergeRejectsDirtyProjectWorktree(t *testing.T) {
 	}
 }
 
+func TestMergeCommitReportCapturesConflictsAndAborts(t *testing.T) {
+	project := t.TempDir()
+	gitRun(t, project, "init")
+	gitRun(t, project, "config", "user.name", "Vcode Test")
+	gitRun(t, project, "config", "user.email", "test@example.invalid")
+	if err := os.WriteFile(filepath.Join(project, "seed"), []byte("seed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, project, "add", ".")
+	gitRun(t, project, "commit", "-m", "init")
+	m := NewManager(project)
+	gitRun(t, project, "checkout", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(project, "README.md"), []byte("feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, project, "add", "README.md")
+	gitRun(t, project, "commit", "-m", "feature change")
+	commit, err := runGitOutput(context.Background(), project, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, project, "checkout", "-")
+	if err := os.WriteFile(filepath.Join(project, "README.md"), []byte("main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runGit(context.Background(), project, "add", "README.md"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runGit(context.Background(), project, "commit", "-m", "main change"); err != nil {
+		t.Fatal(err)
+	}
+	report, mergeErr := m.MergeCommitReport(context.Background(), strings.TrimSpace(commit))
+	if mergeErr == nil || !report.Aborted || len(report.ConflictFiles) != 1 || report.ConflictFiles[0] != "README.md" {
+		t.Fatalf("report=%+v err=%v", report, mergeErr)
+	}
+	if out, statusErr := runGitOutput(context.Background(), project, "status", "--porcelain"); statusErr != nil || strings.TrimSpace(out) != "" {
+		t.Fatalf("project not clean: %q err=%v", out, statusErr)
+	}
+}
+
 func gitRun(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
