@@ -47,6 +47,15 @@ compact_force_ratio = 0.9   # force compacting at this high-water mark
 # planner_model = "deepseek-pro"   # optional: enable two-model collaboration
 # subagent_model = "deepseek-pro"   # optional default for runAs=subagent skills
 # subagent_models = { review = "deepseek-pro", security_review = "deepseek-pro" }   # per-skill overrides
+
+[agent.roles.plan]
+mode = "read_only"
+max_steps = 48
+
+[agent.roles.build]
+mode = "autonomous"
+max_steps = 100
+tools = ["read_file", "search", "write_file", "patch", "bash"]
 # output_style = "explanatory"   # persona/tone folded into the prompt: explanatory | learning | concise,
 #                                  or a custom .Vcode/output-styles/<name>.md ; empty = default
 
@@ -134,7 +143,7 @@ stalled_warning_seconds = 900   # warn once per background job after this many q
 # workspace_root = ""
 # allow_write    = ["/tmp"]
 # forbid_read    = ["${HOME}/.ssh"]
-# bash           = "enforce"   # enforce (default) | off
+# bash           = "auto"      # auto | enforce | off; auto may degrade on Windows
 # network        = true
 
 # Skills are invokable playbooks (SKILL.md / <name>.md with frontmatter), found

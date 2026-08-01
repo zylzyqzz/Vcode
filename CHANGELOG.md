@@ -61,3 +61,9 @@ TypeScript line; a new codebase that becomes the default (`main-v2`).
   the auto-fetch doesn't resolve there.
 
 [1.0.0]: https://github.com/esengine/DeepSeek-Vcode/releases/tag/v1.0.0
+# Unreleased
+
+- Added an approved Chinese task workflow: `task plan` creates parallel read-only scouts, `task approve` gates writes, and `task run` executes the durable graph.
+- Added isolated build worktrees, persisted role summaries, explicit commit integration, conflict blocking, retries, recovery, and verification outcomes.
+- Added role tool allowlists, long-task step budgets, per-node token/cache telemetry, and `task run --no-verify` with an explicit `UNVERIFIED` result.
+- Tightened Windows degraded-sandbox blocking and aligned the CLI UI regression suite with the compact one-line status design.

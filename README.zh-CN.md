@@ -91,3 +91,8 @@ api_key_env = "DEEPSEEK_API_KEY"
 ## 许可证
 
 MIT —— 见 [LICENSE](./LICENSE)
+## 长任务与多智能体
+
+Vcode 将长任务保存为 `.vcode/tasks/` 下的持久化任务图。推荐先运行 `vcode task plan <id>` 生成中文只读计划，再运行 `vcode task approve <id>` 批准写入，最后运行 `vcode task run <id>` 和 `vcode task merge <id>`。实现节点在独立 Git worktree 中执行，冲突会阻断而不会覆盖主工作区。
+
+详细流程见 [长任务与多智能体指南](./docs/LONG_TASKS.zh-CN.md)。

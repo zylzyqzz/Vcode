@@ -2,7 +2,7 @@ VERSION := $(shell git describe --tags --always 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 GOEXE := $(shell go env GOEXE)
 
-.PHONY: build build-cli vet fmt fmt-check test test-cli check hooks cross clean
+.PHONY: build build-cli vet fmt fmt-check test test-cli test-task-runtime smoke-cli check hooks cross clean
 
 build-cli:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vcode$(GOEXE) ./cmd/vcode
@@ -24,6 +24,13 @@ test:
 	go test ./...
 
 test-cli: test
+
+test-task-runtime:
+	go test ./internal/taskgraph ./internal/worktree ./internal/verify ./internal/boot ./internal/cli -count=1
+
+smoke-cli: build-cli
+	bin/vcode$(GOEXE) version
+	bin/vcode$(GOEXE) doctor --json >/dev/null
 
 check: fmt-check vet test-cli
 
