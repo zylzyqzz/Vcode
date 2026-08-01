@@ -25,13 +25,13 @@ if (!KEY) {
   process.exit(1);
 }
 
-const AREA = ['agent', 'mcp', 'config', 'updater', 'provider', 'desktop', 'tui', 'skills', 'rendering'];
+const AREA = ['agent', 'mcp', 'config', 'provider', 'tui', 'skills', 'rendering'];
 const PLATFORM = ['windows', 'macos', 'linux'];
 const SEVERITY = ['crash', 'data-loss', 'security'];
 const ALLOWED = new Set([...AREA, ...PLATFORM, ...SEVERITY]);
 
 const SYSTEM = [
-  'You categorize GitHub issues for Vcode, a Go-based AI coding agent with a Wails desktop app and a terminal UI.',
+  'You categorize GitHub issues for Vcode, a terminal-first Go coding agent.',
   'Pick labels ONLY from these fixed sets. Never invent labels.',
   'area (0-2, the affected subsystem):',
   '  agent: core agent loop / tool-calling / reasoning',
@@ -39,7 +39,6 @@ const SYSTEM = [
   '  config: configuration, setup wizard, .toml/.env',
   '  updater: auto-update, installer, release packaging',
   '  provider: model providers, model selection/switching',
-  '  desktop: Wails desktop GUI',
   '  tui: terminal UI / CLI',
   '  skills: skills system',
   '  rendering: terminal rendering / flicker / repaint',

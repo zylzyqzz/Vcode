@@ -33,8 +33,7 @@ jobs:
       - name: gofmt
         if: runner.os != 'Windows'
         run: |
-          # Root module only — desktop/ is a separate module with its own tooling.
-          unformatted=$(gofmt -l . | grep -v '^desktop/' || true)
+      unformatted=$(gofmt -l . || true)
           if [ -n "$unformatted" ]; then
             echo "These files are not gofmt-clean:"
             echo "$unformatted"

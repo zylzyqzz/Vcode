@@ -7,7 +7,7 @@ everything you need to get started.
 
 - **Go 1.25+** — the project targets the latest stable Go release
 - **Git** — for version control
-- **Node.js** (optional) — only if you work on the desktop app (`desktop/`)
+- **Node.js** is only required for the documentation site; Vcode itself is a Go CLI.
 
 ## Getting started
 
@@ -38,7 +38,7 @@ go test ./...              # runs the full test suite
 | `internal/sandbox` | OS-level sandboxing |
 | `internal/serve` | HTTP/SSE server frontend |
 | `internal/checkpoint` | Snapshot-based rewind |
-| `desktop/` | Wails-based desktop app (separate Go module) |
+| `internal/cli` | Terminal UI, task commands, and CLI interaction |
 | `docs/` | Engineering spec, migration guide |
 
 ### Dependency direction

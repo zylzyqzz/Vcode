@@ -43,7 +43,7 @@ Cross-platform release artifacts can be built with:
 make cross
 ```
 
-Vcode targets Windows, Linux, and macOS on amd64 and arm64. The desktop application is not part of the CLI product path.
+Vcode targets Windows, Linux, and macOS on amd64 and arm64. Vcode is terminal-only; desktop GUI builds and releases are not part of this repository.
 
 ## Quick start with DeepSeek
 

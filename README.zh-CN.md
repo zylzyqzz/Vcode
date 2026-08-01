@@ -81,7 +81,7 @@ api_key_env = "DEEPSEEK_API_KEY"
 ## 文档
 
 - **[指南](./docs/GUIDE.zh-CN.md)** —— 配置、权限与沙盒、插件(MCP)、斜杠命令、`@` 引用、双模型协同。
-- **[机器人使用指南](./docs/BOT_GUIDE.zh-CN.md)** —— 桌面端连接飞书、Lark、微信 Bot，以及 IM 里的审批、YOLO 和命令交互。
+- **[机器人使用指南](./docs/BOT_GUIDE.zh-CN.md)** —— 通过终端 Bot 网关连接飞书、Lark、微信 Bot，以及 IM 里的审批、YOLO 和命令交互。
 - **[规格](./docs/SPEC.md)** —— 工程契约:架构、registry、数据类型与路线图。
 - **[工具合约](./docs/TOOL_CONTRACT.zh-CN.md)** —— provider 可见的内置工具名、read-only 标记和 schema 快照保护。
 - **[Checkpoints 与 rewind](./docs/CHECKPOINTS.md)** —— 基于快照的编辑安全网 (Esc-Esc / `/rewind`)。
@@ -95,6 +95,6 @@ MIT —— 见 [LICENSE](./LICENSE)
 
 Vcode 将长任务保存为 `.vcode/tasks/` 下的持久化任务图。推荐先运行 `vcode task plan <id>` 生成中文只读计划，再运行 `vcode task approve <id>` 批准写入，最后运行 `vcode task run <id>` 和 `vcode task merge <id>`。实现节点在独立 Git worktree 中执行，冲突会阻断而不会覆盖主工作区。
 
-Vcode 当前以终端 CLI 为唯一主产品；桌面端仅保留一个兼容周期的旧配置读取能力，不再进入默认构建或发布流程。
+Vcode 当前只维护终端 CLI；桌面客户端、桌面构建和桌面发布链已移除。旧配置字段仍按兼容策略读取，不影响已有用户升级。
 
 详细流程见 [长任务与多智能体指南](./docs/LONG_TASKS.zh-CN.md)。
