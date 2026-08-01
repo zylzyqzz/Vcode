@@ -10,12 +10,13 @@ import (
 // existing permission policy; this guard is intentionally narrow and is not
 // presented as a replacement for OS isolation.
 func CheckFallbackCommand(command string) error {
-	lower := strings.ToLower(strings.TrimSpace(command))
+	lower := strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(command))), " ")
 	patterns := []string{
 		"format ", "diskpart", "shutdown ", "shutdown.exe", "reboot ",
 		"reg delete", "rm -rf /", "rm -rf \\", "rm -rf c:",
-		"del /s /q c:\\", "rd /s /q c:\\", "rmdir /s /q c:\\",
-		"remove-item -recurse c:\\", "remove-item -recurse /",
+		"del /s /q c:\\", "del /f /s /q c:\\", "rd /s /q c:\\", "rmdir /s /q c:\\",
+		"remove-item -recurse c:\\", "remove-item -recurse -force c:\\", "remove-item -force -recurse c:\\", "remove-item -recurse /",
+		"takeown /f c:\\", "icacls c:\\ /grant",
 		"mkfs.", "dd if=", "> /dev/sd",
 	}
 	for _, pattern := range patterns {
