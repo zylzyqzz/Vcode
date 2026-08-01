@@ -394,7 +394,10 @@ Usage:
   vcode [--model NAME] [-c|--continue] [--resume] [--yolo] [--dir PATH]   interactive session (multi-turn; -c resumes the latest, --resume picks one)
   vcode run  [--model NAME] [--max-steps N] [-c|--continue] [--resume PATH] <task>   run one task and exit
   vcode review [--base BRANCH] [--commit SHA] [--model NAME]  AI-powered code review on local diffs
-  vcode task list|create|show                         manage durable long-running project tasks
+  vcode task list|global|create|show|logs             inspect durable task graph state
+  vcode task plan|approve|run|resume|retry <id>       plan, approve, execute, or recover a task
+  vcode task pause|cancel <id> [node-id]              pause or cancel task execution
+  vcode task merge <id> [node-id]                     integrate committed worktree changes
   vcode serve [--model NAME] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  serve over HTTP+SSE (with optional auth)
   vcode acp [--model NAME]                           serve Agent Client Protocol over stdio (also: vcode --acp)
   vcode setup [path]                                 interactive config wizard; writes vcode.toml (+ .env)
