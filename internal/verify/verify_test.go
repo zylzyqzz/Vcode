@@ -32,6 +32,31 @@ func TestPlanNodeUsesExistingScripts(t *testing.T) {
 	}
 }
 
+func TestPlanUsesDeclaredNodePackageManager(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"scripts":{"test":"vitest"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pnpm-lock.yaml"), []byte("lockfileVersion: 9\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	checks := Plan(root)
+	if len(checks) != 1 || checks[0].Command != "pnpm run test" {
+		t.Fatalf("checks=%+v, want pnpm command", checks)
+	}
+}
+
+func TestPlanPythonFallsBackToUnittest(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "pyproject.toml"), []byte("[project]\nname='sample'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	checks := Plan(root)
+	if len(checks) != 1 || checks[0].Command != "python -m unittest discover" {
+		t.Fatalf("checks=%+v, want unittest fallback", checks)
+	}
+}
+
 func TestPlanUnknownProjectIsUnverified(t *testing.T) {
 	if got := Plan(t.TempDir()); got != nil {
 		t.Fatalf("checks = %+v, want nil", got)
@@ -51,5 +76,8 @@ func TestRunReportsCancellationAsVerificationEvidence(t *testing.T) {
 	}
 	if !strings.Contains(result.Failed[0], "verification stopped") {
 		t.Fatalf("failure=%q, want cancellation detail", result.Failed[0])
+	}
+	if len(result.Evidence) == 0 || result.Evidence[0].Status != "cancelled" || result.Evidence[0].Command == "" {
+		t.Fatalf("evidence=%+v, want cancelled command evidence", result.Evidence)
 	}
 }
