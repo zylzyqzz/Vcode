@@ -135,6 +135,24 @@ func TestMergeConflictAbortsCherryPick(t *testing.T) {
 	_ = m.Remove(context.Background(), "task-conflict", "second")
 }
 
+func TestMergeRejectsDirtyProjectWorktree(t *testing.T) {
+	root := t.TempDir()
+	gitRun(t, root, "init")
+	gitRun(t, root, "config", "user.name", "Vcode Test")
+	gitRun(t, root, "config", "user.email", "test@example.invalid")
+	if err := os.WriteFile(filepath.Join(root, "README"), []byte("before\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, root, "add", ".")
+	gitRun(t, root, "commit", "-m", "init")
+	if err := os.WriteFile(filepath.Join(root, "README"), []byte("local edit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewManager(root).MergeCommit(context.Background(), "HEAD"); err == nil || !strings.Contains(err.Error(), "clean project worktree") {
+		t.Fatalf("err=%v, want dirty-worktree guard", err)
+	}
+}
+
 func gitRun(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)

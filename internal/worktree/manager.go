@@ -64,6 +64,20 @@ func (m *Manager) List(ctx context.Context) (string, error) {
 	return runGitOutput(ctx, m.ProjectRoot, "worktree", "list", "--porcelain")
 }
 
+func (m *Manager) EnsureProjectClean(ctx context.Context) error {
+	if m == nil || strings.TrimSpace(m.ProjectRoot) == "" {
+		return errors.New("worktree project root is required")
+	}
+	out, err := runGitOutput(ctx, m.ProjectRoot, "status", "--porcelain")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(out) != "" {
+		return errors.New("project worktree has uncommitted changes; commit or stash them before integration")
+	}
+	return nil
+}
+
 func (m *Manager) ChangedFiles(ctx context.Context, taskID, nodeID string) ([]string, error) {
 	path, err := m.Path(taskID, nodeID)
 	if err != nil {
@@ -101,6 +115,9 @@ func (m *Manager) MergeCommit(ctx context.Context, commit string) error {
 	commit = strings.TrimSpace(commit)
 	if commit == "" {
 		return errors.New("commit is required")
+	}
+	if err := m.EnsureProjectClean(ctx); err != nil {
+		return fmt.Errorf("integration requires a clean project worktree: %w", err)
 	}
 	if err := runGit(ctx, m.ProjectRoot, "cherry-pick", commit); err != nil {
 		// Abort only an in-progress cherry-pick. If Git rejected before it
