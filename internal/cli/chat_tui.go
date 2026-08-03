@@ -1040,6 +1040,16 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveCompletion(1)
 				return m, nil
 			case "tab", "enter":
+				// A selected slash argument is an executable choice (for example a
+				// model, session, or provider). Enter must apply it and submit the
+				// command in one step; otherwise the completion is merely copied into
+				// the composer and the user has to press Enter a second time. @ file
+				// references intentionally keep the old insert-only behaviour.
+				if msg.String() == "enter" && m.completion.kind == compSlashArg {
+					m.acceptCompletion()
+					m.completion = completion{}
+					break
+				}
 				if msg.String() == "enter" && (m.completionExactLabel() || m.completionBareOverlayCommand()) {
 					m.completion = completion{}
 					break // fall through to regular Enter and submit the command
