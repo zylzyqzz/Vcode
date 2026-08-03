@@ -48,7 +48,11 @@ type cliThemeStyle struct {
 }
 
 var (
-	cliDarkTheme = cliPalette{
+	// vcodeBrandGold is intentionally independent from selectable accent themes.
+	// The main CLI chrome must not change colour when a task starts or a mode is
+	// switched; themes may still affect secondary/editor surfaces.
+	vcodeBrandGold = cliColor{"#b8860b", 136}
+	cliDarkTheme   = cliPalette{
 		name:         "dark",
 		style:        "graphite",
 		accent:       cliColor{"#b8860b", 136},
@@ -385,7 +389,7 @@ func init() {
 
 func refreshCLIStyles() {
 	inputBoxStyle = withThemeBorderFG(lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder(), true, false, true, false), activeCLITheme.accent).
+		Border(lipgloss.NormalBorder(), true, false, true, false), vcodeBrandGold).
 		PaddingLeft(1)
 	approvalBannerStyle = withThemeFG(withThemeBorderFG(lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), true, false, true, false), activeCLITheme.warn), activeCLITheme.warn).
@@ -400,7 +404,7 @@ func refreshCLIStyles() {
 	choicePanelStyle = withThemeBorderFG(lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), true, false, true, false), activeCLITheme.accent).
 		PaddingLeft(1)
-	scrollThumbStyle = themeStyle(activeCLITheme.accent)
+	scrollThumbStyle = themeStyle(vcodeBrandGold)
 	scrollTrackStyle = themeStyle(activeCLITheme.faint)
 }
 

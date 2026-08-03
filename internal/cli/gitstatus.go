@@ -133,13 +133,9 @@ var (
 )
 
 func (m chatTUI) statusModeColor() cliColor {
-	if m.goalMode {
-		return statusGoalColor
-	}
-	if m.planMode {
-		return statusPlanColor
-	}
-	return statusAutoColor
+	// Mode changes are conveyed by the label, not by changing the chrome colour.
+	// Keeping this stable prevents Build/Plan/Goal from flashing between palettes.
+	return vcodeBrandGold
 }
 
 func (s gitStatus) Render() string {

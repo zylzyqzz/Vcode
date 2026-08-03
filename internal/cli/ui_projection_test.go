@@ -46,3 +46,15 @@ func TestModeTagUsesGoldRoundedFrameWithoutBackground(t *testing.T) {
 		t.Fatal("mode tag must not use a background color")
 	}
 }
+
+func TestMainCLIChromeUsesStableBrandGold(t *testing.T) {
+	if vcodeBrandGold.hex != "#b8860b" {
+		t.Fatalf("brand gold=%q, want stable dark gold", vcodeBrandGold.hex)
+	}
+	if got := (chatTUI{goalMode: true}).statusModeColor(); got != vcodeBrandGold {
+		t.Fatalf("goal chrome color=%+v, want brand gold %+v", got, vcodeBrandGold)
+	}
+	if got := (chatTUI{planMode: true}).statusModeColor(); got != vcodeBrandGold {
+		t.Fatalf("plan chrome color=%+v, want brand gold %+v", got, vcodeBrandGold)
+	}
+}
