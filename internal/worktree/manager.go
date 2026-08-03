@@ -91,7 +91,17 @@ func (m *Manager) ChangedFiles(ctx context.Context, taskID, nodeID string) ([]st
 	if err != nil {
 		return nil, err
 	}
-	out, err := runGitOutput(ctx, path, "status", "--porcelain")
+	return m.ChangedFilesAt(ctx, path)
+}
+
+// ChangedFilesAt inspects the actual workspace used by a node. Recovery and
+// test nodes often inherit a build worktree rather than owning a node-specific
+// worktree of their own.
+func (m *Manager) ChangedFilesAt(ctx context.Context, workspace string) ([]string, error) {
+	if strings.TrimSpace(workspace) == "" {
+		return nil, errors.New("workspace is required")
+	}
+	out, err := runGitOutput(ctx, workspace, "status", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
@@ -110,13 +120,21 @@ func (m *Manager) Commit(ctx context.Context, taskID, nodeID, message string) (s
 	if err != nil {
 		return "", err
 	}
-	if err := runGit(ctx, path, "add", "-A"); err != nil {
+	return m.CommitAt(ctx, path, message)
+}
+
+// CommitAt commits the actual workspace used by a node.
+func (m *Manager) CommitAt(ctx context.Context, workspace, message string) (string, error) {
+	if strings.TrimSpace(workspace) == "" {
+		return "", errors.New("workspace is required")
+	}
+	if err := runGit(ctx, workspace, "add", "-A"); err != nil {
 		return "", err
 	}
-	if err := runGit(ctx, path, "commit", "-m", message); err != nil {
+	if err := runGit(ctx, workspace, "commit", "-m", message); err != nil {
 		return "", err
 	}
-	return runGitOutput(ctx, path, "rev-parse", "HEAD")
+	return runGitOutput(ctx, workspace, "rev-parse", "HEAD")
 }
 
 func (m *Manager) MergeCommit(ctx context.Context, commit string) error {

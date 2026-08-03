@@ -10,8 +10,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+
+	"vcode/internal/shellparse"
 )
 
 type Status string
@@ -100,15 +103,11 @@ func Run(ctx context.Context, root string) Result {
 			break
 		}
 		started := time.Now()
-		var cmd *exec.Cmd
-		parts := strings.Fields(check.Command)
-		if len(parts) == 0 {
+		cmd, commandErr := commandFor(ctx, root, check.Command)
+		if commandErr != nil {
+			result.Failed = append(result.Failed, fmt.Sprintf("%s: %v", check.Command, commandErr))
+			result.Evidence = append(result.Evidence, Evidence{Name: check.Name, Command: check.Command, Status: "failed", Output: commandErr.Error(), DurationMS: time.Since(started).Milliseconds()})
 			continue
-		}
-		if strings.Contains(check.Command, " run ") && (parts[0] == "npm" || parts[0] == "pnpm" || parts[0] == "yarn" || parts[0] == "bun") {
-			cmd = exec.CommandContext(ctx, parts[0], parts[1:]...)
-		} else {
-			cmd = exec.CommandContext(ctx, parts[0], parts[1:]...)
 		}
 		cmd.Dir = root
 		output, err := cmd.CombinedOutput()
@@ -144,6 +143,28 @@ func Run(ctx context.Context, root string) Result {
 		result.Status = Partial
 	}
 	return result
+}
+
+// commandFor preserves quoted arguments instead of splitting them on spaces.
+// Static commands bypass a shell; commands with shell syntax use the platform's
+// explicit shell so Windows PowerShell behavior is deterministic.
+func commandFor(ctx context.Context, root, command string) (*exec.Cmd, error) {
+	if strings.TrimSpace(command) == "" {
+		return nil, fmt.Errorf("empty verification command")
+	}
+	parsed, err := shellparse.ParseStaticCommand(command, shellparse.StaticCommandPolicy{})
+	if err == nil && len(parsed.Argv) > 0 {
+		cmd := exec.CommandContext(ctx, parsed.Argv[0], parsed.Argv[1:]...)
+		cmd.Dir = root
+		if len(parsed.Env) > 0 {
+			cmd.Env = append(os.Environ(), parsed.Env...)
+		}
+		return cmd, nil
+	}
+	if runtime.GOOS == "windows" {
+		return exec.CommandContext(ctx, "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command), nil
+	}
+	return exec.CommandContext(ctx, "/bin/sh", "-lc", command), nil
 }
 
 func fileExists(path string) bool {

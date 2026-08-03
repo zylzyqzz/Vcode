@@ -71,6 +71,10 @@ func TestCommitAndMergeWorktree(t *testing.T) {
 	if err != nil || len(files) != 1 {
 		t.Fatalf("files=%v err=%v", files, err)
 	}
+	files, err = m.ChangedFilesAt(context.Background(), path)
+	if err != nil || len(files) != 1 {
+		t.Fatalf("files at workspace=%v err=%v", files, err)
+	}
 	commit, err := m.Commit(context.Background(), "task-merge", "build", "task build")
 	if err != nil {
 		t.Fatal(err)

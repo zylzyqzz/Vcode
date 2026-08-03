@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
 
 	"vcode/internal/agent"
@@ -115,12 +116,13 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 		}
 		return 1
 	}
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 	var sink event.Sink = agent.NewTextSink(os.Stdout, nil, 100)
 	if cfg, loadErr := config.Load(); loadErr == nil {
 		sink = withNotifications(sink, cfg)
 	}
-	scheduler := taskgraph.Scheduler{Store: store, MaxParallel: 4, DefaultRetry: 2, OnEvent: func(e taskgraph.Event) {
+	scheduler := taskgraph.Scheduler{Store: store, MaxParallel: 2, DefaultRetry: 2, MaxRecovery: 2, OnEvent: func(e taskgraph.Event) {
 		level := event.LevelInfo
 		if e.Type == "node_failed" || e.Type == "node_retrying" {
 			level = event.LevelWarn
@@ -200,13 +202,13 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 				return resultBase(v, fmt.Errorf("verification failed: %s", strings.Join(result.Failed, "; ")))
 			}
 		}
-		changed, changedErr := worktrees.ChangedFiles(ctx, task.ID, node.ID)
+		changed, changedErr := worktrees.ChangedFilesAt(ctx, workspace)
 		if changedErr != nil {
 			return resultBase(v, changedErr)
 		}
 		commit := ""
-		if node.Role == taskgraph.Build && len(changed) > 0 {
-			commit, changedErr = worktrees.Commit(ctx, task.ID, node.ID, fmt.Sprintf("vcode task %s build %s", task.ID, node.ID))
+		if (node.Role == taskgraph.Build || node.Role == taskgraph.Debug) && len(changed) > 0 && workspace != task.ProjectRoot {
+			commit, changedErr = worktrees.CommitAt(ctx, workspace, fmt.Sprintf("vcode task %s %s %s", task.ID, node.Role, node.ID))
 			if changedErr != nil {
 				result := resultBase(v, changedErr)
 				result.ChangedFiles = changed
@@ -400,6 +402,8 @@ func applyNodeBudgets(nodes []taskgraph.Node) {
 		case taskgraph.Build:
 			nodes[i].MaxSteps = 100
 		case taskgraph.Test:
+			nodes[i].MaxSteps = 64
+		case taskgraph.Debug:
 			nodes[i].MaxSteps = 64
 		}
 	}

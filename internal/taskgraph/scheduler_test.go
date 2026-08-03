@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestSchedulerHonorsDependenciesAndCompletes(t *testing.T) {
@@ -108,7 +110,7 @@ func TestSchedulerKeepsParallelSuccessWhenSiblingFails(t *testing.T) {
 	var events []string
 	err = (Scheduler{Store: store, MaxParallel: 2, OnEvent: func(e Event) { events = append(events, e.Type+":"+e.NodeID) }}).Run(context.Background(), &task, func(_ context.Context, n Node) NodeResult {
 		if n.ID == "bad" {
-			return NodeResult{Err: errors.New("compiler failed")}
+			return NodeResult{Err: errors.New("broken")}
 		}
 		return NodeResult{Verification: &Verification{Status: "VERIFIED"}}
 	})
@@ -139,5 +141,72 @@ func TestSchedulerDoesNotResurrectCancelledTask(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "cancelled") || runs != 0 || task.Status != Cancelled {
 		t.Fatalf("err=%v runs=%d status=%q", err, runs, task.Status)
+	}
+}
+
+func TestSchedulerSerializesWritableNodes(t *testing.T) {
+	store := NewStore(t.TempDir())
+	task, err := store.Create("serial writes", t.TempDir(), []Node{
+		{ID: "build-a", Role: Build},
+		{ID: "build-b", Role: Build},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	active, maxActive := 0, 0
+	if err := (Scheduler{Store: store, MaxParallel: 4}).Run(context.Background(), &task, func(context.Context, Node) NodeResult {
+		mu.Lock()
+		active++
+		if active > maxActive {
+			maxActive = active
+		}
+		mu.Unlock()
+		time.Sleep(20 * time.Millisecond)
+		mu.Lock()
+		active--
+		mu.Unlock()
+		return NodeResult{Verification: &Verification{Status: "VERIFIED"}}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if maxActive != 1 {
+		t.Fatalf("max concurrent writable nodes=%d, want 1", maxActive)
+	}
+}
+
+func TestSchedulerClassifiesVerificationFailure(t *testing.T) {
+	store := NewStore(t.TempDir())
+	task, err := store.Create("classification", t.TempDir(), []Node{{ID: "test", Role: Test, MaxAttempts: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = (Scheduler{Store: store}).Run(context.Background(), &task, func(context.Context, Node) NodeResult {
+		return NodeResult{Err: errors.New("verification failed: go test ./...")}
+	})
+	if task.Nodes[0].FailureClass != FailureTest {
+		t.Fatalf("failure class=%q, want %q", task.Nodes[0].FailureClass, FailureTest)
+	}
+}
+
+func TestSchedulerAddsDebuggerAndTesterAfterExhaustedTestFailure(t *testing.T) {
+	store := NewStore(t.TempDir())
+	task, err := store.Create("recover test", t.TempDir(), []Node{{ID: "test", Role: Test, MaxAttempts: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roles []Role
+	err = (Scheduler{Store: store, MaxRecovery: 1}).Run(context.Background(), &task, func(_ context.Context, n Node) NodeResult {
+		roles = append(roles, n.Role)
+		if n.ID == "test" {
+			return NodeResult{Err: errors.New("verification failed: go test ./...")}
+		}
+		return NodeResult{Verification: &Verification{Status: "VERIFIED"}}
+	})
+	if err != nil || task.Status != Succeeded || task.Outcome != "VERIFIED" {
+		t.Fatalf("err=%v status=%q outcome=%q nodes=%+v", err, task.Status, task.Outcome, task.Nodes)
+	}
+	if len(roles) != 3 || roles[1] != Debug || roles[2] != Test {
+		t.Fatalf("roles=%v, want test, debug, test", roles)
 	}
 }

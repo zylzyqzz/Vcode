@@ -37,6 +37,7 @@ const (
 	Build   Role = "build"
 	Test    Role = "test"
 	Review  Role = "review"
+	Debug   Role = "debug"
 )
 
 type Task struct {
@@ -79,8 +80,10 @@ type Node struct {
 	Artifacts    []Artifact        `json:"artifacts,omitempty"`
 	Verification *Verification     `json:"verification,omitempty"`
 	Error        string            `json:"error,omitempty"`
+	FailureClass FailureClass      `json:"failure_class,omitempty"`
 	StartedAt    *time.Time        `json:"started_at,omitempty"`
 	FinishedAt   *time.Time        `json:"finished_at,omitempty"`
+	Superseded   bool              `json:"superseded,omitempty"`
 	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 

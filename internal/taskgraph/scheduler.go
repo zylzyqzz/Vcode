@@ -32,6 +32,7 @@ type Scheduler struct {
 	Store        *Store
 	MaxParallel  int
 	DefaultRetry int
+	MaxRecovery  int
 	OnEvent      func(Event)
 }
 
@@ -58,6 +59,14 @@ func (s Scheduler) Run(ctx context.Context, task *Task, runner NodeRunner) error
 	if s.DefaultRetry <= 0 {
 		s.DefaultRetry = 2
 	}
+	if s.MaxRecovery <= 0 {
+		s.MaxRecovery = 2
+	}
+	unlock, err := acquireWorkspaceLock(ctx, task.ProjectRoot, hasWritableNodes(*task))
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if task.Status == Succeeded && allSucceeded(*task) {
 		if task.Outcome == "" {
 			task.Outcome = aggregateOutcome(*task)
@@ -93,6 +102,9 @@ func (s Scheduler) Run(ctx context.Context, task *Task, runner NodeRunner) error
 			return s.Store.SetStatus(task, Blocked, "no runnable nodes; dependency or operator action required")
 		}
 
+		if hasWritableReady(ready) {
+			maxParallel = 1
+		}
 		if len(ready) > maxParallel {
 			ready = ready[:maxParallel]
 		}
@@ -145,10 +157,12 @@ func (s Scheduler) applyResult(task *Task, rr nodeRunResult) error {
 			n.Workspace = rr.result.Workspace
 		}
 		if rr.result.Err == nil {
+			n.FailureClass = ""
 			s.emit(Event{Type: "node_succeeded", TaskID: task.ID, NodeID: n.ID, Role: n.Role, Message: rr.result.Message})
 			return s.Store.UpdateNode(task, n.ID, Succeeded, rr.result.Message)
 		}
 		n.Error = rr.result.Err.Error()
+		n.FailureClass = ClassifyAgentFailure(rr.result.Err.Error())
 		maxAttempts := n.MaxAttempts
 		if maxAttempts <= 0 {
 			maxAttempts = s.DefaultRetry
@@ -158,10 +172,70 @@ func (s Scheduler) applyResult(task *Task, rr nodeRunResult) error {
 			s.emit(Event{Type: "node_retrying", TaskID: task.ID, NodeID: n.ID, Role: n.Role, Message: n.Error})
 			return s.Store.AppendEvent(task, Event{Type: "node_retrying", NodeID: n.ID, Role: n.Role, Message: fmt.Sprintf("attempt %d/%d: %s", n.Attempt, maxAttempts, n.Error)})
 		}
+		if n.Role != Debug && recoverableFailure(n.FailureClass) && recoveryRound(*n) < s.MaxRecovery {
+			n.Superseded = true
+			if err := s.Store.UpdateNode(task, n.ID, Failed, n.Error); err != nil {
+				return err
+			}
+			debug, test := recoveryNodes(*n, recoveryRound(*n)+1)
+			task.Nodes = append(task.Nodes, debug, test)
+			recoveryEvent := Event{Type: "recovery_started", TaskID: task.ID, NodeID: n.ID, Role: Debug, Message: "Debugger -> Tester recovery chain scheduled"}
+			s.emit(recoveryEvent)
+			return s.Store.AppendEvent(task, recoveryEvent)
+		}
 		s.emit(Event{Type: "node_failed", TaskID: task.ID, NodeID: n.ID, Role: n.Role, Message: n.Error})
 		return s.Store.UpdateNode(task, n.ID, Failed, n.Error)
 	}
 	return fmt.Errorf("scheduler result references unknown node %q", rr.id)
+}
+
+func hasWritableNodes(t Task) bool {
+	for _, n := range t.Nodes {
+		if n.Role == Build || n.Role == Test || n.Role == Debug {
+			return true
+		}
+	}
+	return false
+}
+
+func recoverableFailure(class FailureClass) bool {
+	return class == FailureCompile || class == FailureTest || class == FailureConflict
+}
+
+func recoveryRound(n Node) int {
+	if n.Metadata == nil {
+		return 0
+	}
+	var round int
+	_, _ = fmt.Sscanf(n.Metadata["recovery_round"], "%d", &round)
+	return round
+}
+
+func recoveryNodes(failed Node, round int) (Node, Node) {
+	base := fmt.Sprintf("%s-recovery-%d", failed.ID, round)
+	workspace := failed.Workspace
+	debug := Node{
+		ID: base + "-debug", Title: "Debugger：诊断并修复失败",
+		Prompt: fmt.Sprintf("原节点 %s 执行失败。请分析失败证据，修复根因，并说明修改内容。失败分类：%s；错误：%s", failed.ID, failed.FailureClass, failed.Error),
+		Role:   Debug, Status: Pending, Workspace: workspace, MaxAttempts: 1,
+		Metadata: map[string]string{"recovery_round": fmt.Sprintf("%d", round), "recovery_of": failed.ID},
+	}
+	test := Node{
+		ID: base + "-test", Title: "Tester：重新验证修复",
+		Prompt: fmt.Sprintf("验证 Debugger 对节点 %s 的修复。运行项目已有测试和构建检查，失败时给出完整证据。", failed.ID),
+		Role:   Test, Status: Pending, DependsOn: []string{debug.ID}, Workspace: workspace, MaxAttempts: 1,
+		Metadata: map[string]string{"recovery_round": fmt.Sprintf("%d", round), "recovery_of": failed.ID},
+	}
+	return debug, test
+}
+
+func hasWritableReady(nodes []Node) bool {
+	for _, n := range nodes {
+		if n.Role == Build || n.Role == Test || n.Role == Debug {
+			return true
+		}
+	}
+	return false
 }
 
 func inheritWorkspace(t Task, node Node) Node {
@@ -184,6 +258,9 @@ func allSucceeded(t Task) bool {
 		return true
 	}
 	for _, n := range t.Nodes {
+		if n.Superseded {
+			continue
+		}
 		if n.Status != Succeeded {
 			return false
 		}
@@ -193,6 +270,9 @@ func allSucceeded(t Task) bool {
 
 func hasFailed(t Task) bool {
 	for _, n := range t.Nodes {
+		if n.Superseded {
+			continue
+		}
 		if n.Status == Failed || n.Status == Cancelled {
 			return true
 		}
@@ -205,6 +285,9 @@ func aggregateOutcome(t Task) string {
 		return "UNVERIFIED"
 	}
 	for _, n := range t.Nodes {
+		if n.Superseded {
+			continue
+		}
 		if n.Role == Plan || n.Role == Explore || n.Role == Review {
 			continue
 		}

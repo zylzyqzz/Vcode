@@ -81,3 +81,13 @@ func TestRunReportsCancellationAsVerificationEvidence(t *testing.T) {
 		t.Fatalf("evidence=%+v, want cancelled command evidence", result.Evidence)
 	}
 }
+
+func TestCommandForPreservesQuotedArguments(t *testing.T) {
+	cmd, err := commandFor(context.Background(), t.TempDir(), `go test "./folder with spaces/..."`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cmd.Args) < 3 || cmd.Args[2] != "./folder with spaces/..." {
+		t.Fatalf("args=%q", cmd.Args)
+	}
+}

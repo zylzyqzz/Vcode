@@ -47,7 +47,7 @@ func ClassifyAgentFailure(message string) FailureClass {
 		return FailureTimeout
 	case strings.Contains(s, "compile") || strings.Contains(s, "build failed") || strings.Contains(s, "undefined:"):
 		return FailureCompile
-	case strings.Contains(s, "test failed") || strings.Contains(s, "tests failed") || strings.Contains(s, "failing test"):
+	case strings.Contains(s, "test failed") || strings.Contains(s, "tests failed") || strings.Contains(s, "failing test") || strings.Contains(s, "verification failed") || strings.Contains(s, "go test"):
 		return FailureTest
 	case strings.Contains(s, "connection") || strings.Contains(s, "temporary") || strings.Contains(s, "eof") || strings.Contains(s, "rate limit"):
 		return FailureTransient

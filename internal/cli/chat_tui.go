@@ -2437,17 +2437,17 @@ func (m chatTUI) runningWorkingLine(cancelRequested, styled bool) string {
 		return ""
 	}
 	if m.retryAttempt > 0 && !cancelRequested {
-		return fmt.Sprintf("  "+i18n.M.ChatStatusRetryingFmt, m.spinner.View(), m.retryAttempt, m.retryMax)
+		return renderActivity(m.shimmerFrame)
 	}
 	if !cancelRequested {
-		return fmt.Sprintf("%s  %ds · Esc", renderActivity(m.shimmerFrame), m.elapsed)
+		return renderActivity(m.shimmerFrame)
 	}
 
 	var working string
 	if cancelRequested {
-		working = fmt.Sprintf("  "+i18n.M.ChatStatusCancellingFmt, m.spinner.View(), m.elapsed)
+		working = renderActivity(m.shimmerFrame) + "  " + i18n.M.ChatStatusCancellingFmt
 	} else {
-		working = fmt.Sprintf("%s  (%ds · Esc cancels)", renderActivity(m.shimmerFrame), m.elapsed)
+		working = renderActivity(m.shimmerFrame)
 	}
 	if n := len(m.pendingInterject); n > 0 {
 		var queued string
@@ -3396,6 +3396,24 @@ func (m *chatTUI) unsendPending() {
 // the reasoning and answer streamed so far, then commits its own line —
 // preserving order. Switching on the event Kind replaces the old prefix-sniffing
 // of a flattened byte stream: the structure is now explicit.
+func shouldShowNotice(text string, level event.Level) bool {
+	if level == event.LevelWarn {
+		return true
+	}
+	lower := strings.ToLower(strings.TrimSpace(text))
+	for _, prefix := range []string{
+		"background bash started:", "background bash finished:",
+		"background task started:", "background task finished:",
+		"task ", "node_", "session changed", "compaction ",
+		"memory compiler", "cache ",
+	} {
+		if strings.HasPrefix(lower, prefix) {
+			return false
+		}
+	}
+	return true
+}
+
 func (m *chatTUI) ingestEvent(e event.Event) {
 	if e.Kind == event.Retrying {
 		m.retryAttempt = e.RetryAttempt
@@ -3510,7 +3528,7 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 		// rendered into the conversation transcript.
 
 	case event.Notice:
-		if strings.HasPrefix(e.Text, "background bash started:") || strings.HasPrefix(e.Text, "background bash finished:") || strings.HasPrefix(e.Text, "background task started:") || strings.HasPrefix(e.Text, "background task finished:") {
+		if !shouldShowNotice(e.Text, e.Level) {
 			return
 		}
 		glyph := "·"
@@ -3521,6 +3539,9 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 		m.commitLine(fmt.Sprintf("  %s %s", glyph, e.Text))
 
 	case event.GuardianAssessment:
+		if strings.EqualFold(e.Guardian.Outcome, "allow") || strings.EqualFold(e.Guardian.Outcome, "pass") {
+			return
+		}
 		m.finalizeStreamed()
 		g := e.Guardian
 		line := fmt.Sprintf("Guardian %s · %s", g.Outcome, g.Tool)
