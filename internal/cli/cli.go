@@ -991,15 +991,12 @@ func validateDeepSeekKey(key string) error {
 	return nil
 }
 
-// readAPIKey disables terminal echo while reading a secret. The scanner
-// fallback keeps tests and redirected input deterministic.
+// readAPIKey intentionally keeps terminal echo enabled for the first-run
+// wizard. This is a local CLI onboarding flow, and visible input makes it
+// easier to confirm a copied key on Windows Terminal. The scanner also keeps
+// redirected input deterministic.
 func readAPIKey(r *os.File, w io.Writer) (string, error) {
 	fmt.Fprint(w, "DeepSeek API Key: ")
-	if term.IsTerminal(int(r.Fd())) {
-		key, err := term.ReadPassword(int(r.Fd()))
-		fmt.Fprintln(w)
-		return strings.TrimSpace(string(key)), err
-	}
 	s := bufio.NewScanner(r)
 	if !s.Scan() {
 		return "", s.Err()
