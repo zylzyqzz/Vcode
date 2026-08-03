@@ -95,6 +95,9 @@ func Run(args []string, version string) int {
 	case "setup":
 		configureCLIThemeFromConfigForTTYOutput()
 		return setupConfig(rest)
+	case "model":
+		configureCLIThemeFromConfigNoProbe()
+		return modelCommand(rest)
 	case "config":
 		configureCLIThemeFromConfigNoProbe()
 		return configCommand(rest)
@@ -943,11 +946,22 @@ func minimalSetup(configPath, envPath string) int {
 		fmt.Fprintln(os.Stderr, "DEEPSEEK_API_KEY is required. Run `vcode setup` to configure it.")
 		return 1
 	}
+	if isInteractive() {
+		fmt.Println(dim("正在验证 DeepSeek API Key 和网络连接…"))
+		if err := validateDeepSeekKey(key); err != nil {
+			fmt.Fprintln(os.Stderr, "验证失败：", err)
+			fmt.Fprintln(os.Stderr, "配置未写入，请检查 Key 后重试 `vcode setup`。")
+			return 1
+		}
+	}
 
 	// A fresh config always uses the two official DeepSeek V4 entries. An
 	// existing config is left intact so setup cannot erase custom providers.
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		cfg = config.Default()
+		// Store the user-facing model ID for a fresh install. The legacy
+		// deepseek-flash provider alias remains readable for existing users.
+		cfg.DefaultModel = "deepseek-v4-flash"
 	}
 	if err := cfg.SaveTo(configPath); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.WriteConfigErr, err)
@@ -957,10 +971,24 @@ func minimalSetup(configPath, envPath string) int {
 		fmt.Fprintln(os.Stderr, i18n.M.WriteEnvErr, err)
 		return 1
 	}
-	fmt.Printf("\n%s DeepSeek 已配置\n", green("✓"))
-	fmt.Printf("%s 模型：deepseek-v4-flash · deepseek-v4-pro\n", dim("✓"))
-	fmt.Printf("%s %s\n", green("✓"), fmt.Sprintf(i18n.M.WroteFileFmt, displayPath(configPath)))
+	fmt.Printf("\n%s DeepSeek 已配置\n", brandAccent("✓"))
+	fmt.Printf("%s 默认模型：deepseek-v4-flash\n", brandAccent("✓"))
+	fmt.Printf("%s 可用模型：deepseek-v4-flash · deepseek-v4-pro\n", brandAccent("✓"))
+	fmt.Printf("%s %s\n", brandAccent("✓"), fmt.Sprintf(i18n.M.WroteFileFmt, displayPath(configPath)))
 	return 0
+}
+
+func validateDeepSeekKey(key string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	models, err := fetchModelListCompat(ctx, "https://api.deepseek.com", key)
+	if err != nil {
+		return err
+	}
+	if len(models) == 0 {
+		return errors.New("API 未返回可用模型")
+	}
+	return nil
 }
 
 // readAPIKey disables terminal echo while reading a secret. The scanner
@@ -2106,6 +2134,8 @@ func configReasoningLanguageCommand(args []string) int {
 
 func configUsage() {
 	fmt.Print(`Usage:
+  vcode model list
+  vcode model use <MODEL>
   vcode config auto-plan [off|on]
   vcode config memory-v5 [off|observe|compact|on|status]
   vcode config reasoning-language [--local] [auto|zh|en]
