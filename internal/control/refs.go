@@ -68,8 +68,9 @@ type ExternalFolderRefEntry struct {
 	IsDir       bool
 }
 
-// refTokenRe matches an @reference token: '@' then a run of non-space chars.
-var refTokenRe = regexp.MustCompile(`@([^\s]+)`)
+// refTokenRe matches an @reference token. Quoted paths may contain spaces,
+// which is common on Windows and macOS (for example @"C:\\Program Files\\app").
+var refTokenRe = regexp.MustCompile(`@(?:"([^"]+)"|'([^']+)'|([^\s]+))`)
 var pathLocationSuffixRe = regexp.MustCompile(`:\d+(?::\d+)?:?$`)
 
 const externalFolderRefPrefix = "__vcode_external_folder"
@@ -80,7 +81,14 @@ func parseRefTokens(line string) []string {
 	var toks []string
 	seen := map[string]bool{}
 	for _, g := range refTokenRe.FindAllStringSubmatch(line, -1) {
-		t := strings.TrimRight(g[1], ".,;!?)]}")
+		t := ""
+		for _, candidate := range g[1:] {
+			if candidate != "" {
+				t = candidate
+				break
+			}
+		}
+		t = strings.TrimRight(t, ".,;!?)]}")
 		if t == "" || seen[t] {
 			continue
 		}
@@ -638,8 +646,11 @@ func FileRefLine(line string) (string, bool) {
 	if p == "" {
 		return "", false
 	}
-	if info, err := os.Stat(p); err != nil || info.IsDir() {
+	if _, err := os.Stat(p); err != nil {
 		return "", false
+	}
+	if strings.ContainsAny(p, " \t") {
+		return `@"` + p + `"`, true
 	}
 	return "@" + p, true
 }

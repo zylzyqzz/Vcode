@@ -1289,6 +1289,11 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ctrl.RunShell(cmd)
 				return m, tea.Batch(m.spinner.Tick, elapsedTick())
 			}
+			// A manually typed or pasted path is treated the same as a dropped
+			// file: convert it to an @-reference before the model sees it.
+			if ref, ok := control.FileRefLine(line); ok {
+				line = ref
+			}
 
 			// Slash commands run locally without going through the model. A
 			// '/'-leading line that's actually a dragged file path is an attachment,
@@ -2538,34 +2543,9 @@ func (m chatTUI) View() tea.View {
 	// only while a turn runs); the status/data rows stay below. This mirrors Claude
 	// Code: live progress over the composer, shortcuts + stats under it.
 	working := m.runningWorkingLine(cancelRequested, true)
-	// Second status row: the live data (model, git, effort, context gauge, cache
-	// rates, jobs, balance). It lives on its own row so it's always visible; if it
-	// exceeds the terminal width it wraps to additional rows instead of being
-	// truncated. Wrapping is safe in the alt-screen view — there's no scrollback
-	// to strand — and computeStatusLineCount reserves the correct height.
-	var data []string
-	if mt := m.modelTag(); mt != "" {
-		data = append(data, mt)
-	}
-	if cache := m.cacheTag(); cache != "" {
-		data = append(data, cache)
-	}
-	if ctxTag != "" {
-		data = append(data, ctxTag)
-	}
-	if jt := m.jobsTag(); jt != "" {
-		data = append(data, jt)
-	}
-	if m.balance != "" {
-		data = append(data, dim(m.balance))
-	}
-	dataLine := "  " + strings.Join(data, " · ")
-	// A configured custom status line replaces the built-in data row entirely.
-	if m.statuslineCmd != "" && m.statuslineOut != "" {
-		dataLine = "  " + m.statuslineOut
-	}
-	// The footer intentionally exposes only mode, model, and context. Advanced runtime
-	// metrics remain available through the metrics/debug commands, not the UI.
+	// The footer intentionally exposes only mode, model, and context. Prices,
+	// balances, cache rates, jobs, git details, effort, and custom statusline
+	// output never enter the compact footer on any terminal platform.
 	status = "  " + modeTag
 	compactData := make([]string, 0, 2)
 	if mt := m.modelTag(); mt != "" {
@@ -2574,7 +2554,7 @@ func (m chatTUI) View() tea.View {
 	if ctxTag != "" {
 		compactData = append(compactData, ctxTag)
 	}
-	dataLine = "  " + strings.Join(compactData, " · ")
+	dataLine := "  " + strings.Join(compactData, " · ")
 
 	// Bottom region pinned under the transcript viewport: optional panels, the
 	// composer when visible, then the two status rows. Its height feeds
@@ -3094,27 +3074,7 @@ func (m chatTUI) computeStatusLineCount(width int) int {
 		status += " · " + mt
 	}
 
-	// Replicate the data line from View().
-	var data []string
-	if mt := m.modelTag(); mt != "" {
-		data = append(data, mt)
-	}
-	if cache := m.cacheTag(); cache != "" {
-		data = append(data, cache)
-	}
-	if ct := m.contextTag(); ct != "" {
-		data = append(data, ct)
-	}
-	if jt := m.jobsTag(); jt != "" {
-		data = append(data, jt)
-	}
-	if m.balance != "" {
-		data = append(data, m.balance)
-	}
-	dataLine := "  " + strings.Join(data, " · ")
-	if m.statuslineCmd != "" && m.statuslineOut != "" {
-		dataLine = "  " + m.statuslineOut
-	}
+	// Keep the row calculation identical to View(): only model and context.
 	status = "  " + modeTag
 	compactData := make([]string, 0, 2)
 	if mt := m.modelTag(); mt != "" {
@@ -3123,7 +3083,7 @@ func (m chatTUI) computeStatusLineCount(width int) int {
 	if ct := m.contextTag(); ct != "" {
 		compactData = append(compactData, ct)
 	}
-	dataLine = "  " + strings.Join(compactData, " · ")
+	dataLine := "  " + strings.Join(compactData, " · ")
 
 	// Replicate the working (spinner) line from View(), shown only while a turn runs.
 	working := m.runningWorkingLine(cancelRequested, false)

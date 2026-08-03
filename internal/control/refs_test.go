@@ -25,8 +25,8 @@ func TestFileRefLine(t *testing.T) {
 	if _, ok := FileRefLine("/compact"); ok {
 		t.Fatal("a slash command must not resolve as a file ref")
 	}
-	if _, ok := FileRefLine(dir); ok {
-		t.Fatal("a directory must not resolve as a file ref")
+	if got, ok := FileRefLine(dir); !ok || got != "@"+dir {
+		t.Fatalf("FileRefLine(directory) = %q, %v; want @directory", got, ok)
 	}
 	if _, ok := FileRefLine(""); ok {
 		t.Fatal("empty must not resolve as a file ref")
@@ -61,6 +61,7 @@ func TestParseRefTokens(t *testing.T) {
 		{"see @docs:doc://x and @src/main.go", []string{"docs:doc://x", "src/main.go"}},
 		{"trailing @file.go.", []string{"file.go"}},
 		{"dedup @a @a", []string{"a"}},
+		{`quoted Windows path @"C:\Program Files\Vcode\README.md"`, []string{`C:\Program Files\Vcode\README.md`}},
 		{"no refs here", nil},
 		{"email a@b.com keeps token", []string{"b.com"}},
 	}
