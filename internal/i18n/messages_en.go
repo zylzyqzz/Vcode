@@ -405,6 +405,8 @@ Usage:
   vcode config memory-v5 [off|observe|compact|on|status]  configure Memory v5
   vcode config reasoning-language [auto|zh|en]        configure visible reasoning language
   vcode mcp <add|remove|list|import>                 manage MCP servers in vcode.toml
+  vcode compat doctor|list|import                  inspect or import compatible agent assets
+  vcode skill list / vcode agent list              list compatible Skills and Agents
   vcode init                                         show how to generate project memory (AGENTS.md)
   vcode doctor [--json]                              print redacted local diagnostics
   vcode bot start|doctor|weixin-login                multi-channel IM bot gateway

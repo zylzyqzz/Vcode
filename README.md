@@ -91,6 +91,11 @@ vcode run "fix the failing tests"  Run one task and verify the project
 vcode review                  Review the current worktree
 vcode doctor                  Diagnose configuration, model, tools, and safety
 vcode doctor --json           Print machine-readable diagnostics
+vcode compat doctor --json    Inspect OpenCode/Claude/Codex-compatible assets
+vcode compat list             List discovered instructions, Skills, Agents, MCP, and Hooks
+vcode compat import           Import discovered MCP servers into vcode.toml
+vcode skill list              List Skills from all compatible roots
+vcode agent list              List compatible Agent definitions
 vcode setup                   Create or migrate local configuration
 vcode task list                List durable project tasks
 vcode task list --json         Emit task state for scripts and CI
@@ -115,6 +120,20 @@ Inside an interactive session:
 - `Ctrl+B` remains available for shell output compatibility.
 - `/plan` starts a Chinese, read-only planning flow and waits for approval.
 - `/rewind`, `/resume`, and `/fork` manage recoverable session history.
+
+## Compatibility
+
+Vcode discovers common assets without copying foreign runtime code:
+
+- `AGENTS.md`, `CLAUDE.md`, and `VCODE.md` instructions;
+- Skills under `.vcode`, `.codex`, `.claude`, `.opencode`, `.agents`, and `.agent`;
+- Claude-compatible `.mcp.json` and OpenCode `mcp.servers` configuration;
+- Markdown Agent definitions under `.claude/agents`, `.opencode/agent`, and `.codex/agents`;
+- command Hooks from compatible project settings files.
+
+Use `vcode compat doctor --json` before importing a project. `vcode compat import`
+only writes MCP entries to `vcode.toml`; Skills, instructions, Agents, and Hooks
+remain in their source locations and are loaded on demand.
 
 ## Safety model
 

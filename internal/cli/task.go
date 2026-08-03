@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"vcode/internal/agent"
+	"vcode/internal/compat"
 	"vcode/internal/config"
 	"vcode/internal/event"
 	"vcode/internal/provider"
@@ -127,13 +128,22 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 		sink.Emit(event.Event{Kind: event.Phase, Text: fmt.Sprintf("task %s · %s · %s", e.NodeID, e.Type, e.Message), Level: level})
 	}}
 	worktrees := worktree.NewManager(task.ProjectRoot)
+	compatReport, _ := compat.Scan(task.ProjectRoot)
 	err = scheduler.Run(ctx, &task, func(ctx context.Context, node taskgraph.Node) taskgraph.NodeResult {
 		role := string(node.Role)
 		if role == "" {
 			role = string(taskgraph.Build)
 		}
+		roleSpec := compatibleAgentForRole(compatReport.Agents, role)
+		model := node.Model
+		if model == "" && roleSpec != nil {
+			model = roleSpec.Model
+		}
 		prior := dependencySummaries(task, node)
 		prompt := fmt.Sprintf("You are the %s role in a durable Vcode task.\nTask goal: %s\nNode: %s\n\n%s\n\nReturn changed files, commands, verification evidence, blockers, and next action.", role, task.Goal, node.Title, node.Prompt)
+		if roleSpec != nil && strings.TrimSpace(roleSpec.Body) != "" {
+			prompt += "\n\nRole instructions from " + roleSpec.Source.Path + ":\n" + roleSpec.Body
+		}
 		if prior != "" {
 			prompt += "\n\nReports from completed dependent roles:\n" + prior
 		}
@@ -155,7 +165,7 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 		if workspace == "" {
 			workspace = task.ProjectRoot
 		}
-		ctrl, setupErr := setupWithWorkspaceRole(ctx, node.Model, node.MaxSteps, true, sink, workspace, role)
+		ctrl, setupErr := setupWithWorkspaceRole(ctx, model, node.MaxSteps, true, sink, workspace, role)
 		if setupErr != nil {
 			return resultBase(nil, setupErr)
 		}
@@ -226,6 +236,28 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 	}
 	fmt.Printf("task %s completed outcome=VERIFIED\n", id)
 	return 0
+}
+
+func compatibleAgentForRole(agents []compat.AgentSpec, role string) *compat.AgentSpec {
+	aliases := map[string][]string{
+		"build":   {"build", "implementer", "coder"},
+		"plan":    {"plan", "architect"},
+		"explore": {"explore", "explorer", "scout"},
+		"review":  {"review", "reviewer"},
+		"test":    {"test", "tester"},
+		"debug":   {"debug", "debugger"},
+	}
+	want := aliases[strings.ToLower(strings.TrimSpace(role))]
+	for _, agent := range agents {
+		name := strings.ToLower(strings.TrimSpace(agent.Name))
+		for _, alias := range want {
+			if name == alias {
+				copy := agent
+				return &copy
+			}
+		}
+	}
+	return nil
 }
 
 func dependencySummaries(task taskgraph.Task, node taskgraph.Node) string {

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"vcode/internal/compat"
 	"vcode/internal/provider"
 	"vcode/internal/taskgraph"
 )
@@ -28,6 +29,22 @@ func TestDefaultTaskNodesAreChineseAndOrdered(t *testing.T) {
 		if i >= 3 && (len(node.DependsOn) != 1 || node.DependsOn[0] != nodes[i-1].ID) {
 			t.Fatalf("node %d dependency=%v, want %s", i, node.DependsOn, nodes[i-1].ID)
 		}
+	}
+}
+
+func TestCompatibleAgentForRoleUsesExternalAliases(t *testing.T) {
+	agents := []compat.AgentSpec{
+		{Name: "architect", Model: "planner-model"},
+		{Name: "debugger", Model: "debug-model"},
+	}
+	if got := compatibleAgentForRole(agents, "plan"); got == nil || got.Model != "planner-model" {
+		t.Fatalf("plan agent=%+v", got)
+	}
+	if got := compatibleAgentForRole(agents, "debug"); got == nil || got.Model != "debug-model" {
+		t.Fatalf("debug agent=%+v", got)
+	}
+	if got := compatibleAgentForRole(agents, "build"); got != nil {
+		t.Fatalf("unexpected build agent=%+v", got)
 	}
 }
 

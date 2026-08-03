@@ -402,6 +402,8 @@ var Chinese = Messages{
   vcode config memory-v5 [off|observe|compact|on|status]  配置 Memory v5
   vcode config reasoning-language [auto|zh|en]        配置可见思考语言
   vcode mcp <add|remove|list|import>                 管理 vcode.toml 里的 MCP 服务器
+  vcode compat doctor|list|import                  检查或导入兼容生态资源
+  vcode skill list / vcode agent list              查看兼容的 Skill 和 Agent
   vcode init                                         查看如何生成项目记忆（AGENTS.md）
   vcode doctor [--json]                              输出脱敏的本地诊断信息
   vcode bot start|doctor|weixin-login                多渠道 IM bot 网关

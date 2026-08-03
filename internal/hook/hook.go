@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"vcode/internal/compat"
 	"vcode/internal/config"
 	"vcode/internal/pluginpkg"
 	"vcode/internal/proc"
@@ -167,6 +168,7 @@ func Load(opts LoadOptions) []ResolvedHook {
 		if s := readSettings(p); s != nil {
 			appendResolved(&out, s, ScopeProject, p)
 		}
+		appendCompatibleHooks(&out, opts.ProjectRoot)
 	}
 	appendPluginHooks(&out, vcodeHome(opts.HomeDir), opts.ProjectRoot)
 	g := GlobalSettingsPath(opts.HomeDir)
@@ -180,6 +182,49 @@ func Load(opts LoadOptions) []ResolvedHook {
 		}
 	}
 	return out
+}
+
+// appendCompatibleHooks imports command hooks from Claude/OpenCode/Codex-style
+// settings through the normalized compatibility scanner. Vcode-native hooks
+// remain handled by readSettings, so native policy and ordering are unchanged.
+func appendCompatibleHooks(out *[]ResolvedHook, projectRoot string) {
+	report, err := compat.Scan(projectRoot)
+	if err != nil {
+		return
+	}
+	for _, h := range report.Hooks {
+		if h.Source.Kind == "project" || h.Source.Kind == "vcode" || strings.TrimSpace(h.Command) == "" {
+			continue
+		}
+		event := compatibleEvent(h.Event)
+		if event == "" {
+			continue
+		}
+		*out = append(*out, ResolvedHook{HookConfig: HookConfig{Match: h.Match, Command: h.Command}, Event: event, Scope: ScopeProject, Source: h.Source.Path})
+	}
+}
+
+func compatibleEvent(raw string) Event {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "pretooluse", "before_tool", "tool.execute.before":
+		return PreToolUse
+	case "posttooluse", "after_tool", "tool.execute.after":
+		return PostToolUse
+	case "userpromptsubmit", "before_prompt":
+		return UserPromptSubmit
+	case "stop", "after_response":
+		return Stop
+	case "sessionstart", "session_start":
+		return SessionStart
+	case "sessionend", "session_end":
+		return SessionEnd
+	case "notification":
+		return Notification
+	case "precompact":
+		return PreCompact
+	default:
+		return ""
+	}
 }
 
 // ProjectDefinesHooks reports whether a project's settings.json exists and

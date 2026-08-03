@@ -163,6 +163,9 @@ func mcpCommand(args []string) int {
 	case "remove", "rm":
 		return mcpRemoveCLI(args[1:])
 	case "import":
+		if len(args) > 1 && (args[1] == "--compat" || args[1] == "--project") {
+			return compatImport()
+		}
 		return mcpImportCLI()
 	case "help", "-h", "--help":
 		mcpUsage()
@@ -269,6 +272,7 @@ Usage:
   vcode mcp add <name> --http <url> [--header K=V] remote (Streamable HTTP)
   vcode mcp add <name> --sse  <url>               remote (legacy SSE)
   vcode mcp import                                import MCP servers from cc-switch
+  vcode mcp import --compat                       import project MCP compatibility configs
   vcode mcp remove <name>
 
 Flags for add:

@@ -341,13 +341,13 @@ func MemoryUserDir() string {
 }
 
 // ConventionDirs are the parent directories scanned for agent assets (skills,
-// commands), in canonical-first order. .vcode is ours; .agents / .agent /
-// .claude let users drop in assets authored for other agent tools without moving
+// commands), in canonical-first order. .vcode is ours; .codex / .claude /
+// .opencode / .agents / .agent let users drop in assets authored for other agent tools without moving
 // files. Shared so skills (internal/skill) and commands (CommandDirs) discover
 // the same set. Note: hooks are NOT scanned across these — a .claude/settings.json
 // uses a different hook schema that can't be parsed as ours, so hooks stay in
 // .vcode/settings.json (see internal/hook).
-var ConventionDirs = []string{".vcode", ".agents", ".agent", ".claude"}
+var ConventionDirs = []string{".vcode", ".codex", ".claude", ".opencode", ".agents", ".agent"}
 
 // conventionSubdirsAsc joins sub under each ConventionDir of base, in ascending
 // priority (reverse of ConventionDirs) so the canonical .vcode ends up the
