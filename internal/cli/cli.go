@@ -928,15 +928,37 @@ func minimalSetup(configPath, envPath string) int {
 	}
 
 	key := strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY"))
+	baseURL := "https://api.deepseek.com"
+	modelID := "deepseek-v4-flash"
 	if key == "" && isInteractive() {
 		fmt.Println()
 		fmt.Println(accent("◆") + " " + bold("Vcode 首次配置"))
-		fmt.Println(dim("只需要输入 DeepSeek API Key，模型已默认配置："))
-		fmt.Println("  " + accent("•") + " deepseek-v4-flash")
-		fmt.Println("  " + accent("•") + " deepseek-v4-pro")
+		fmt.Println(dim("模型固定使用 DeepSeek，可选择官方平台或自定义兼容平台。"))
+		fmt.Println("  1. " + brandAccent("官方 DeepSeek") + "  (https://api.deepseek.com)")
+		fmt.Println("  2. " + brandAccent("自定义兼容平台") + "  (代理 / 中转 / 企业网关)")
 		fmt.Println()
-		var err error
-		key, err = readAPIKey(os.Stdin, os.Stdout)
+		reader := bufio.NewReader(os.Stdin)
+		choice, err := readSetupLine(reader, os.Stdout, "接入平台 [1/2] (默认 1): ")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "\n"+i18n.M.SetupCancelled)
+			return 1
+		}
+		if strings.TrimSpace(choice) == "2" {
+			baseURL, err = readSetupLine(reader, os.Stdout, "兼容 API 地址: ")
+			if err != nil || strings.TrimSpace(baseURL) == "" {
+				fmt.Fprintln(os.Stderr, "\n未提供 API 地址，配置已取消。")
+				return 1
+			}
+			modelChoice, modelErr := readSetupLine(reader, os.Stdout, "DeepSeek 模型 [1=flash, 2=pro] (默认 1): ")
+			if modelErr != nil {
+				fmt.Fprintln(os.Stderr, "\n"+i18n.M.SetupCancelled)
+				return 1
+			}
+			if strings.TrimSpace(modelChoice) == "2" {
+				modelID = "deepseek-v4-pro"
+			}
+		}
+		key, err = readSetupLine(reader, os.Stdout, "DeepSeek API Key: ")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "\n"+i18n.M.SetupCancelled)
 			return 1
@@ -948,7 +970,7 @@ func minimalSetup(configPath, envPath string) int {
 	}
 	if isInteractive() {
 		fmt.Println(dim("正在验证 DeepSeek API Key 和网络连接…"))
-		if err := validateDeepSeekKey(key); err != nil {
+		if err := validateDeepSeekKeyAt(context.Background(), baseURL, key); err != nil {
 			fmt.Fprintln(os.Stderr, "验证失败：", err)
 			fmt.Fprintln(os.Stderr, "配置未写入，请检查 Key 后重试 `vcode setup`。")
 			return 1
@@ -961,7 +983,13 @@ func minimalSetup(configPath, envPath string) int {
 		cfg = config.Default()
 		// Store the user-facing model ID for a fresh install. The legacy
 		// deepseek-flash provider alias remains readable for existing users.
-		cfg.DefaultModel = "deepseek-v4-flash"
+		cfg.DefaultModel = modelID
+		if baseURL != "https://api.deepseek.com" {
+			cfg.Providers = []config.ProviderEntry{{
+				Name: "deepseek-custom", Kind: "openai", BaseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+				Model: modelID, Models: []string{modelID}, Default: modelID, APIKeyEnv: "DEEPSEEK_API_KEY", ContextWindow: 1000000,
+			}}
+		}
 	}
 	if err := cfg.SaveTo(configPath); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.WriteConfigErr, err)
@@ -972,16 +1000,26 @@ func minimalSetup(configPath, envPath string) int {
 		return 1
 	}
 	fmt.Printf("\n%s DeepSeek 已配置\n", brandAccent("✓"))
-	fmt.Printf("%s 默认模型：deepseek-v4-flash\n", brandAccent("✓"))
-	fmt.Printf("%s 可用模型：deepseek-v4-flash · deepseek-v4-pro\n", brandAccent("✓"))
+	fmt.Printf("%s 默认模型：%s\n", brandAccent("✓"), modelID)
+	fmt.Printf("%s 平台：%s\n", brandAccent("✓"), baseURL)
 	fmt.Printf("%s %s\n", brandAccent("✓"), fmt.Sprintf(i18n.M.WroteFileFmt, displayPath(configPath)))
 	return 0
 }
 
+func readSetupLine(r *bufio.Reader, w io.Writer, prompt string) (string, error) {
+	fmt.Fprint(w, prompt)
+	line, err := r.ReadString('\n')
+	return strings.TrimSpace(line), err
+}
+
 func validateDeepSeekKey(key string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	return validateDeepSeekKeyAt(context.Background(), "https://api.deepseek.com", key)
+}
+
+func validateDeepSeekKeyAt(parent context.Context, baseURL, key string) error {
+	ctx, cancel := context.WithTimeout(parent, 12*time.Second)
 	defer cancel()
-	models, err := fetchModelListCompat(ctx, "https://api.deepseek.com", key)
+	models, err := fetchModelListCompat(ctx, strings.TrimRight(strings.TrimSpace(baseURL), "/"), key)
 	if err != nil {
 		return err
 	}
