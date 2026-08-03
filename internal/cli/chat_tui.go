@@ -515,6 +515,11 @@ type clipboardPasteMsg struct {
 func newChatTUI(ctrl control.SessionAPI, missing string, eventCh chan event.Event, termW int) chatTUI {
 	ti := textarea.New()
 	configureChatTextarea(&ti)
+	// Build is the default product mode: execute without approval prompts. Plan
+	// remains an explicit read-only mode, while Goal is an explicit long-running
+	// objective mode entered through the mode cycle or /goal commands.
+	ctrl.SetPlanMode(false)
+	ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
@@ -532,7 +537,7 @@ func newChatTUI(ctrl control.SessionAPI, missing string, eventCh chan event.Even
 		input:                ti,
 		spinner:              sp,
 		shimmerFrame:         0,
-		planMode:             true,
+		planMode:             false,
 		submittedInputCursor: -1,
 		queueEditCursor:      -1,
 		nextPasteID:          1,

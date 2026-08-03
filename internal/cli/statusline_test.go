@@ -97,7 +97,7 @@ func TestIdleStatuslineIsCompact(t *testing.T) {
 
 	content := renderStatuslineView(t, false)
 	plain := bottomStatusPlain(content)
-	if !strings.Contains(plain, "Plan") {
+	if !strings.Contains(plain, "Build") {
 		t.Fatalf("idle status line missing mode:\n%s", plain)
 	}
 	for _, old := range []string{"ready", "shift+tab", "ctrl+y", "effort", "cache:", "to compact", "balance:"} {
@@ -116,7 +116,7 @@ func TestYoloStatuslineUsesDangerPill(t *testing.T) {
 
 	content := renderStatuslineView(t, true)
 	plain := bottomStatusPlain(content)
-	if !strings.Contains(plain, "Plan") {
+	if !strings.Contains(plain, "Build") {
 		t.Fatalf("compact status line missing mode:\n%s", plain)
 	}
 	_ = content
@@ -153,7 +153,7 @@ func TestDesktopShortcutStatuslineUsesPlanToggleHint(t *testing.T) {
 
 	content := renderStatuslineViewWithShortcutLayout(t, "desktop")
 	plain := bottomStatusPlain(content)
-	if !strings.Contains(plain, "Plan") {
+	if !strings.Contains(plain, "Build") {
 		t.Fatalf("desktop shortcut status line missing mode:\n%s", plain)
 	}
 	_ = plain
@@ -233,11 +233,25 @@ func TestRefreshEffortStatusUsesCurrentModel(t *testing.T) {
 	}
 }
 
+func TestDefaultChatModeIsBuildYolo(t *testing.T) {
+	ctrl := control.New(control.Options{})
+	m := newChatTUI(ctrl, "", make(chan event.Event, 1), 80)
+	if m.planMode {
+		t.Fatal("new chats should start in Build mode")
+	}
+	if ctrl.PlanMode() {
+		t.Fatal("Build mode should not enable plan-only execution")
+	}
+	if ctrl.ToolApprovalMode() != control.ToolApprovalYolo {
+		t.Fatalf("Build mode approval = %v, want YOLO", ctrl.ToolApprovalMode())
+	}
+}
+
 func TestCompactStatuslineKeepsOnlyModeModelAndContext(t *testing.T) {
 	i18n.DetectLanguage("en")
 	content := renderStatuslineViewWithCache(t)
 	plain := bottomStatusPlain(content)
-	if !strings.Contains(plain, "Plan") || !strings.Contains(plain, "deepseek-v4-flash") {
+	if !strings.Contains(plain, "Build") || !strings.Contains(plain, "deepseek-v4-flash") {
 		t.Fatalf("compact status line missing mode or model:\n%s", plain)
 	}
 	for _, hidden := range []string{"ready", "cache:", "effort", "balance:", "to compact", "git"} {
