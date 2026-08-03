@@ -3237,10 +3237,22 @@ func (m chatTUI) modeTagText() string {
 // pills used by other coding agents. It uses a one-line gold capsule frame and
 // no background fill, so it does not change the composer layout.
 func renderModeTag(label string) string {
+	label = centerModeLabel(label, 6)
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#b8860b")).
 		Bold(true).
 		Render("⟮─ " + label + " ─⟯")
+}
+
+func centerModeLabel(label string, width int) string {
+	label = strings.TrimSpace(label)
+	runes := []rune(label)
+	if len(runes) >= width {
+		return string(runes[:width])
+	}
+	left := (width - len(runes)) / 2
+	right := width - len(runes) - left
+	return strings.Repeat(" ", left) + label + strings.Repeat(" ", right)
 }
 
 func (m *chatTUI) toggleVerboseReasoning(notify bool) {

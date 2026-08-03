@@ -36,8 +36,11 @@ func TestNoticeProjectionHidesInternalLifecycleNoise(t *testing.T) {
 
 func TestModeTagUsesGoldRoundedFrameWithoutBackground(t *testing.T) {
 	plain := ansi.Strip(renderModeTag("Build"))
-	if plain != "⟮─ Build ─⟯" {
+	if plain != "⟮─ Build  ─⟯" {
 		t.Fatalf("mode tag=%q, want gold capsule frame", plain)
+	}
+	if ansi.StringWidth(ansi.Strip(renderModeTag("Build"))) != ansi.StringWidth(ansi.Strip(renderModeTag("Plan"))) || ansi.StringWidth(ansi.Strip(renderModeTag("Plan"))) != ansi.StringWidth(ansi.Strip(renderModeTag("Goal"))) {
+		t.Fatal("mode frames must keep a stable width while switching")
 	}
 	if strings.Contains(renderModeTag("Plan"), "48;") {
 		t.Fatal("mode tag must not use a background color")
