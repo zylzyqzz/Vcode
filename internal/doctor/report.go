@@ -163,6 +163,15 @@ func Collect(opts Options) Report {
 	for i := range cfg.Providers {
 		p := cfg.Providers[i]
 		models := p.ModelList()
+		isDefault := p.Name == cfg.DefaultModel
+		if !isDefault {
+			for _, model := range models {
+				if p.Name+"/"+model == cfg.DefaultModel || model == cfg.DefaultModel {
+					isDefault = true
+					break
+				}
+			}
+		}
 		report.Providers = append(report.Providers, ProviderReport{
 			Name:          p.Name,
 			Kind:          p.Kind,
@@ -171,7 +180,7 @@ func Collect(opts Options) Report {
 			Models:        models,
 			APIKeyEnv:     p.APIKeyEnv,
 			KeyPresent:    p.Configured(),
-			IsDefault:     p.Name == cfg.DefaultModel,
+			IsDefault:     isDefault,
 			ContextWindow: p.ContextWindow,
 		})
 	}
