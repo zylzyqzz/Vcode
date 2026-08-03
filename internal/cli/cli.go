@@ -954,6 +954,7 @@ func minimalSetup(configPath, envPath string) int {
 	}
 
 	key := strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY"))
+	keyEnv := "DEEPSEEK_API_KEY"
 	baseURL := "https://api.deepseek.com"
 	modelID := "deepseek-v4-flash"
 	if key == "" && isInteractive() {
@@ -970,6 +971,8 @@ func minimalSetup(configPath, envPath string) int {
 			return 1
 		}
 		if strings.TrimSpace(choice) == "2" {
+			keyEnv = "VCODE_SENSENOVA_DEEPSEEK_API_KEY"
+			key = strings.TrimSpace(os.Getenv(keyEnv))
 			baseURL, err = readSetupLine(reader, os.Stdout, "兼容 API 地址: ")
 			if err != nil || strings.TrimSpace(baseURL) == "" {
 				fmt.Fprintln(os.Stderr, "\n未提供 API 地址，配置已取消。")
@@ -991,7 +994,7 @@ func minimalSetup(configPath, envPath string) int {
 		}
 	}
 	if key == "" {
-		fmt.Fprintln(os.Stderr, "DEEPSEEK_API_KEY is required. Run `vcode setup` to configure it.")
+		fmt.Fprintf(os.Stderr, "%s is required. Run `vcode setup` to configure it.\n", keyEnv)
 		return 1
 	}
 	if isInteractive() {
@@ -1013,7 +1016,7 @@ func minimalSetup(configPath, envPath string) int {
 		if baseURL != "https://api.deepseek.com" {
 			cfg.Providers = []config.ProviderEntry{{
 				Name: "deepseek-custom", Kind: "openai", BaseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
-				Model: modelID, Models: []string{modelID}, Default: modelID, APIKeyEnv: "DEEPSEEK_API_KEY", ContextWindow: 1000000,
+				Model: modelID, Models: []string{modelID}, Default: modelID, APIKeyEnv: keyEnv, ContextWindow: 1000000,
 			}}
 		}
 	}
@@ -1021,7 +1024,7 @@ func minimalSetup(configPath, envPath string) int {
 		fmt.Fprintln(os.Stderr, i18n.M.WriteConfigErr, err)
 		return 1
 	}
-	if _, err := config.StoreCredentialLines([]string{"DEEPSEEK_API_KEY=" + key}); err != nil {
+	if _, err := config.StoreCredentialLines([]string{keyEnv + "=" + key}); err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.WriteEnvErr, err)
 		return 1
 	}
