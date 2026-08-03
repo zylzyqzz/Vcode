@@ -302,28 +302,43 @@ func registerWindowsWeixinTask(taskName, workspaceRoot, approval string) error {
 	if err != nil {
 		return err
 	}
-	command := fmt.Sprintf("%s bot start --channels weixin --dir %s --approval %s", quoteWindowsArg(exe), quoteWindowsArg(workspaceRoot), approval)
-	cmd := exec.Command("schtasks", "/Create", "/TN", taskName, "/TR", command, "/SC", "ONLOGON", "/RL", "LIMITED", "/F")
+	configPath := config.UserConfigPath()
+	if strings.TrimSpace(configPath) == "" {
+		return fmt.Errorf("user config path is unavailable")
+	}
+	launcher := filepath.Join(filepath.Dir(configPath), "weixin-bot-start.ps1")
+	script := fmt.Sprintf("$ErrorActionPreference = 'Continue'\nStart-Process -WindowStyle Hidden -WorkingDirectory '%s' -FilePath '%s' -ArgumentList @('bot','start','--channels','weixin','--dir','%s','--approval','%s')\n", quotePowerShellArg(workspaceRoot), quotePowerShellArg(exe), quotePowerShellArg(workspaceRoot), quotePowerShellArg(approval))
+	if err := os.WriteFile(launcher, []byte(script), 0o600); err != nil {
+		return fmt.Errorf("write launcher: %w", err)
+	}
+	command := fmt.Sprintf("powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File %s", quoteWindowsArg(launcher))
+	cmd := exec.Command("reg.exe", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", taskName, "/t", "REG_SZ", "/d", command, "/f")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("schtasks: %w: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("registry autostart: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
 
 func removeWindowsWeixinTask(taskName string) error {
-	cmd := exec.Command("schtasks", "/Delete", "/TN", taskName, "/F")
+	cmd := exec.Command("reg.exe", "delete", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", taskName, "/f")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		text := strings.ToLower(string(out))
-		if strings.Contains(text, "cannot find") || strings.Contains(text, "找不到") || strings.Contains(text, "does not exist") {
-			return nil
+		if !strings.Contains(text, "not found") && !strings.Contains(text, "找不到") && !strings.Contains(text, "unable to find") {
+			return fmt.Errorf("registry autostart: %w: %s", err, strings.TrimSpace(string(out)))
 		}
-		return fmt.Errorf("schtasks: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	if path := config.UserConfigPath(); strings.TrimSpace(path) != "" {
+		_ = os.Remove(filepath.Join(filepath.Dir(path), "weixin-bot-start.ps1"))
 	}
 	return nil
 }
 
 func quoteWindowsArg(value string) string {
 	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
+}
+
+func quotePowerShellArg(value string) string {
+	return strings.ReplaceAll(value, "'", "''")
 }
 
 func botDoctor(args []string) int {

@@ -150,7 +150,7 @@ vcode bot install --dir C:\path\to\project
 ```
 
 `bot install` 不依赖 OpenClaw，也不会安装 OpenClaw 插件；它复用当前 Vcode
-默认模型，并注册名为 `Vcode Weixin Bot` 的 Windows 计划任务。YOLO 只作用于
+默认模型，并注册名为 `Vcode Weixin Bot` 的 Windows 当前用户登录启动项。YOLO 只作用于
 微信 Bot，首次收到陌生私聊仍需通过 pairing 配对。移除自启但保留配置和凭据：
 
 ```powershell
