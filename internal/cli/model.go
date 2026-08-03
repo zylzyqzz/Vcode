@@ -85,6 +85,14 @@ func (m *chatTUI) showModels() {
 		m.notice("model: " + err.Error())
 		return
 	}
+	refs := configuredModelRefs(cfg)
+	m.commitLine(renderModels(m.width, refs, m.modelRef))
+}
+
+func configuredModelRefs(cfg *config.Config) []string {
+	if cfg == nil {
+		return nil
+	}
 	var refs []string
 	for i := range cfg.Providers {
 		p := &cfg.Providers[i]
@@ -95,7 +103,18 @@ func (m *chatTUI) showModels() {
 			refs = append(refs, p.Name+"/"+model)
 		}
 	}
-	m.commitLine(renderModels(m.width, refs, m.modelRef))
+	// Put the active platform/model first. This is important when several
+	// platforms expose the same DeepSeek model: the first completion must not
+	// silently steer the user back to the official endpoint.
+	for i, ref := range refs {
+		if ref == cfg.DefaultModel {
+			if i > 0 {
+				refs[0], refs[i] = refs[i], refs[0]
+			}
+			break
+		}
+	}
+	return refs
 }
 
 // persistModel writes ref (a "provider/model" string) to default_model in the
@@ -129,17 +148,7 @@ func modelRefs() []string {
 	if err != nil {
 		return nil
 	}
-	var out []string
-	for i := range cfg.Providers {
-		p := &cfg.Providers[i]
-		if !p.Configured() {
-			continue
-		}
-		for _, model := range p.ChatModelList() {
-			out = append(out, p.Name+"/"+model)
-		}
-	}
-	return out
+	return configuredModelRefs(cfg)
 }
 
 // providerNames returns the names of configured providers for slash completion.
