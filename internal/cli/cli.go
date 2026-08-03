@@ -912,10 +912,36 @@ func maybeRunFirstRunSetup(cmd string) int {
 	default:
 		return 0
 	}
-	if !isInteractive() || config.SourcePath() != "" {
+	if !isInteractive() {
+		return 0
+	}
+	if config.SourcePath() != "" {
+		// A partially-created official config can be left behind when an older
+		// wizard exits before saving the key. Treat that state as first-run so
+		// the user is not dropped directly into a broken chat session. Custom
+		// platform configs remain untouched and can be repaired with `vcode setup`.
+		if cfg, err := config.Load(); err == nil && isIncompleteOfficialDeepSeekConfig(cfg) {
+			return minimalSetup(defaultConfigTarget(), defaultEnvTarget())
+		}
 		return 0
 	}
 	return minimalSetup(defaultConfigTarget(), defaultEnvTarget())
+}
+
+func isIncompleteOfficialDeepSeekConfig(cfg *config.Config) bool {
+	if cfg == nil || len(cfg.Providers) == 0 {
+		return false
+	}
+	missingKey := false
+	for _, p := range cfg.Providers {
+		if p.Name != "deepseek-flash" && p.Name != "deepseek-pro" {
+			return false
+		}
+		if p.APIKeyEnv == "DEEPSEEK_API_KEY" && strings.TrimSpace(os.Getenv(p.APIKeyEnv)) == "" {
+			missingKey = true
+		}
+	}
+	return missingKey
 }
 
 // minimalSetup is the CLI-first onboarding flow. DeepSeek is the supported
