@@ -139,6 +139,24 @@ Vcode bot doctor --deep
 Vcode bot start --channels qq,feishu,lark,weixin --dir /path/to/project
 ```
 
+Windows 微信长期运行可以直接使用原生 Vcode 网关：
+
+```powershell
+# 1. 扫码登录一次（凭据保存到 Vcode 用户目录）
+vcode bot weixin-login
+
+# 2. 配置当前默认模型、YOLO 执行和 Windows 登录自启
+vcode bot install --dir C:\path\to\project
+```
+
+`bot install` 不依赖 OpenClaw，也不会安装 OpenClaw 插件；它复用当前 Vcode
+默认模型，并注册名为 `Vcode Weixin Bot` 的 Windows 计划任务。YOLO 只作用于
+微信 Bot，首次收到陌生私聊仍需通过 pairing 配对。移除自启但保留配置和凭据：
+
+```powershell
+vcode bot uninstall
+```
+
 `--channels` 用来选择接受哪些已配置的 IM 输入。`feishu` 和 `lark` 会选择对应
 飞书系连接，`weixin` 会选择已保存的微信 iLink 账号，`qq` 会选择已配置的 QQ
 Bot。`--dir` 用来把远端消息绑定到某个项目工作区，`--model` 可以为这个进程

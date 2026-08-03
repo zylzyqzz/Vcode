@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -29,6 +32,10 @@ func botCommand(args []string, version string) int {
 	switch sub {
 	case "start":
 		return botStart(rest, version)
+	case "install":
+		return botInstall(rest, version)
+	case "uninstall":
+		return botUninstall(rest)
 	case "doctor":
 		return botDoctor(rest)
 	case "pairing":
@@ -50,6 +57,7 @@ func botStart(args []string, version string) int {
 	channels := fs.String("channels", "", "启用的平台，逗号分隔：qq,feishu,lark,weixin")
 	dir := fs.String("dir", "", "工作目录")
 	model := fs.String("model", "", "模型名（空则用 default_model）")
+	approval := fs.String("approval", "", "工具审批：ask|auto|yolo（空则使用配置）")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -149,6 +157,9 @@ func botStart(args []string, version string) int {
 		OnInbound:      rememberInboundRemote,
 		OnSessionReady: botruntime.NewSessionRemembererWithWorkspace(logger, workspaceRoot),
 	}
+	if strings.TrimSpace(*approval) != "" {
+		gwCfg.ToolApprovalMode = strings.TrimSpace(*approval)
+	}
 
 	feishuDomains := botruntime.RequestedFeishuDomains(requestedChannels)
 	gw := bot.NewGatewayWithAdapterBindings(gwCfg, botruntime.AdapterBindings(cfg, enabledPlatforms, feishuDomains, logger), logger)
@@ -183,6 +194,136 @@ func splitBotChannels(raw string) []string {
 		return nil
 	}
 	return strings.Split(raw, ",")
+}
+
+const windowsWeixinTaskName = "Vcode Weixin Bot"
+
+// botInstall configures Vcode's native Weixin gateway and, on Windows,
+// registers a logon task for a long-lived background process. It deliberately
+// does not install or start OpenClaw: both programs would compete for the same
+// Weixin iLink connection.
+func botInstall(args []string, version string) int {
+	fs := flag.NewFlagSet("bot install", flag.ContinueOnError)
+	dir := fs.String("dir", "", "绑定的项目工作目录")
+	approval := fs.String("approval", "yolo", "工具审批：ask|auto|yolo；默认 yolo")
+	taskName := fs.String("task-name", windowsWeixinTaskName, "Windows 计划任务名称")
+	noAutostart := fs.Bool("no-autostart", false, "只配置微信，不注册开机自启")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(*approval))
+	if mode != "ask" && mode != "auto" && mode != "yolo" {
+		fmt.Fprintln(os.Stderr, "error: --approval must be ask|auto|yolo")
+		return 2
+	}
+	workspaceRoot := strings.TrimSpace(*dir)
+	if workspaceRoot == "" {
+		workspaceRoot, _ = os.Getwd()
+	}
+	workspaceRoot, _ = filepath.Abs(workspaceRoot)
+	info, err := os.Stat(workspaceRoot)
+	if err != nil || !info.IsDir() {
+		fmt.Fprintf(os.Stderr, "error: workspace directory does not exist: %s\n", workspaceRoot)
+		return 1
+	}
+
+	path := config.UserConfigPath()
+	if strings.TrimSpace(path) == "" {
+		fmt.Fprintln(os.Stderr, "error: user config path is unavailable")
+		return 1
+	}
+	edit := config.LoadForEdit(path)
+	edit.Bot.Enabled = true
+	edit.Bot.ToolApprovalMode = mode
+	edit.Bot.Weixin.Enabled = true
+	if strings.TrimSpace(edit.Bot.Weixin.AccountID) == "" {
+		edit.Bot.Weixin.AccountID = "default"
+	}
+	if strings.TrimSpace(edit.Bot.Weixin.APIBase) == "" {
+		edit.Bot.Weixin.APIBase = "https://ilinkai.weixin.qq.com"
+	}
+	// Pairing remains enabled so YOLO never becomes an anonymous public bot.
+	edit.Bot.Pairing.Enabled = true
+	if edit.Bot.Pairing.RequestTTLMinutes <= 0 {
+		edit.Bot.Pairing.RequestTTLMinutes = 60
+	}
+	if edit.Bot.Pairing.MaxPendingPerPlatform <= 0 {
+		edit.Bot.Pairing.MaxPendingPerPlatform = 3
+	}
+	if err := edit.SaveTo(path); err != nil {
+		fmt.Fprintf(os.Stderr, "error: save bot config: %v\n", err)
+		return 1
+	}
+
+	fmt.Println("Vcode 微信后台已配置")
+	fmt.Printf("  工作目录: %s\n", workspaceRoot)
+	fmt.Printf("  模型: %s\n", botruntime.ModelName(edit, ""))
+	fmt.Printf("  执行模式: %s\n", mode)
+	fmt.Printf("  配置: %s\n", path)
+	if runtime.GOOS != "windows" {
+		fmt.Println("当前系统不是 Windows；请使用系统服务管理器启动：vcode bot start --channels weixin")
+		return 0
+	}
+	if *noAutostart {
+		fmt.Println("已跳过开机自启。启动命令：vcode bot start --channels weixin")
+		return 0
+	}
+	if err := registerWindowsWeixinTask(*taskName, workspaceRoot, mode); err != nil {
+		fmt.Fprintf(os.Stderr, "error: register Windows autostart: %v\n", err)
+		return 1
+	}
+	fmt.Printf("  开机自启: %s\n", *taskName)
+	fmt.Printf("  手动启动: vcode bot start --channels weixin --dir %q\n", workspaceRoot)
+	_ = version
+	return 0
+}
+
+func botUninstall(args []string) int {
+	fs := flag.NewFlagSet("bot uninstall", flag.ContinueOnError)
+	taskName := fs.String("task-name", windowsWeixinTaskName, "Windows 计划任务名称")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if runtime.GOOS != "windows" {
+		fmt.Println("当前系统不是 Windows，无需移除 Windows 自启任务。")
+		return 0
+	}
+	if err := removeWindowsWeixinTask(*taskName); err != nil {
+		fmt.Fprintf(os.Stderr, "error: remove Windows autostart: %v\n", err)
+		return 1
+	}
+	fmt.Printf("已移除开机自启任务 %q；微信登录凭据和配置保持不变。\n", *taskName)
+	return 0
+}
+
+func registerWindowsWeixinTask(taskName, workspaceRoot, approval string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	command := fmt.Sprintf("%s bot start --channels weixin --dir %s --approval %s", quoteWindowsArg(exe), quoteWindowsArg(workspaceRoot), approval)
+	cmd := exec.Command("schtasks", "/Create", "/TN", taskName, "/TR", command, "/SC", "ONLOGON", "/RL", "LIMITED", "/F")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("schtasks: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func removeWindowsWeixinTask(taskName string) error {
+	cmd := exec.Command("schtasks", "/Delete", "/TN", taskName, "/F")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		text := strings.ToLower(string(out))
+		if strings.Contains(text, "cannot find") || strings.Contains(text, "找不到") || strings.Contains(text, "does not exist") {
+			return nil
+		}
+		return fmt.Errorf("schtasks: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func quoteWindowsArg(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
 }
 
 func botDoctor(args []string) int {
@@ -551,7 +692,9 @@ func botUsage() {
 	fmt.Print(`vcode bot — multi-channel IM bot gateway (QQ / Feishu / WeChat)
 
 Usage:
-  vcode bot start   [--channels qq,feishu,lark,weixin] [--dir PATH] [--model NAME]
+	  vcode bot start   [--channels qq,feishu,lark,weixin] [--dir PATH] [--model NAME] [--approval ask|auto|yolo]
+	  vcode bot install [--dir PATH] [--approval yolo|auto|ask]
+	  vcode bot uninstall
   vcode bot doctor  [--json] [--deep]
   vcode bot pairing list|approve|reject
   vcode bot weixin-login [--timeout SECONDS]
