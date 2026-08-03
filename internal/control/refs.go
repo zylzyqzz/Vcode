@@ -497,6 +497,12 @@ func (c *Controller) inputImages(line string) []string {
 		if r.baseDir != "" {
 			baseDir = r.baseDir
 		}
+		if r.kind == refFile && isVideoPath(r.path) {
+			if frames, err := videoFrameDataURLs(r.path, baseDir); err == nil {
+				urls = append(urls, frames...)
+			}
+			continue
+		}
 		if url, err := visionRefImageDataURL(r, baseDir); err == nil {
 			urls = append(urls, url)
 		}
@@ -882,6 +888,9 @@ func readFileRef(path, baseDir string) (content string, isDir bool, err error) {
 		}
 		return b.String(), true, nil
 	}
+	if isVideoPath(rel) {
+		return videoRefNote(displayPath, info.Size()), false, nil
+	}
 
 	if strings.EqualFold(filepath.Ext(rel), ".pdf") {
 		return readPDFRef(absPath, info.Size()), false, nil
@@ -960,6 +969,9 @@ func readFileRefUnscoped(path string) (content string, isDir bool, err error) {
 			return "", true, err
 		}
 		return b.String(), true, nil
+	}
+	if isVideoPath(path) {
+		return videoRefNote(path, info.Size()), false, nil
 	}
 
 	if strings.EqualFold(filepath.Ext(path), ".pdf") {
