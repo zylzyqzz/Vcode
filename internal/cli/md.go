@@ -204,14 +204,14 @@ func (r *mdRenderer) renderBlock(buf *strings.Builder, node ast.Node, src []byte
 func (r *mdRenderer) renderHeading(buf *strings.Builder, n *ast.Heading, src []byte, indent int) {
 	inline := r.collectInline(n, src)
 	buf.WriteString(strings.Repeat(" ", indent))
-	buf.WriteString(bold(accent(inline)))
+	buf.WriteString(bold(brandAccent(inline)))
 	buf.WriteString("\n")
 	// Level-1 headings get an accent underline; deeper levels rely on
 	// bold+colour alone so the hierarchy reads at a glance without piling
 	// on visual weight on every "###" in a long response.
 	if n.Level == 1 {
 		buf.WriteString(strings.Repeat(" ", indent))
-		buf.WriteString(accent(strings.Repeat("─", visibleWidth(inline))))
+		buf.WriteString(brandAccent(strings.Repeat("─", visibleWidth(inline))))
 		buf.WriteString("\n")
 	}
 	buf.WriteString("\n")
@@ -254,7 +254,7 @@ func (r *mdRenderer) renderList(buf *strings.Builder, n *ast.List, src []byte, i
 			marker = "•"
 		}
 		buf.WriteString(strings.Repeat(" ", indent))
-		buf.WriteString(accent(marker) + " ")
+		buf.WriteString(brandAccent(marker) + " ")
 		markerW := visibleWidth(marker) + 1
 
 		first := item.FirstChild()
@@ -288,7 +288,7 @@ func (r *mdRenderer) renderFenced(buf *strings.Builder, n ast.Node, src []byte, 
 		l := n.Lines().At(i)
 		line := strings.TrimRight(string(l.Value(src)), "\n")
 		buf.WriteString(prefix)
-		buf.WriteString(accent(line))
+		buf.WriteString(brandAccent(line))
 		buf.WriteString("\n")
 	}
 	buf.WriteString("\n")
@@ -335,7 +335,7 @@ func (r *mdRenderer) appendInline(b *strings.Builder, n ast.Node, src []byte) {
 		case *ast.CodeSpan:
 			var inner strings.Builder
 			r.appendInline(&inner, v, src)
-			b.WriteString(accent(inner.String()))
+			b.WriteString(brandAccent(inner.String()))
 		case *ast.Link:
 			var inner strings.Builder
 			r.appendInline(&inner, v, src)

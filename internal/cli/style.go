@@ -45,10 +45,15 @@ func sgr(code, s string) string {
 	return code + s + ansiReset
 }
 
-func bold(s string) string    { return sgr(ansiBold, s) }
-func dim(s string) string     { return themeFg(activeCLITheme.faint, s) }
-func green(s string) string   { return themeFg(activeCLITheme.success, s) }
-func red(s string) string     { return themeFg(activeCLITheme.err, s) }
-func yellow(s string) string  { return themeFg(activeCLITheme.warn, s) }
-func accent(s string) string  { return themeFg(activeCLITheme.accent, s) }
-func reverse(s string) string { return sgr(ansiReverse, s) }
+func bold(s string) string   { return sgr(ansiBold, s) }
+func dim(s string) string    { return themeFg(activeCLITheme.faint, s) }
+func green(s string) string  { return themeFg(activeCLITheme.success, s) }
+func red(s string) string    { return themeFg(activeCLITheme.err, s) }
+func yellow(s string) string { return themeFg(activeCLITheme.warn, s) }
+func accent(s string) string { return themeFg(activeCLITheme.accent, s) }
+
+// brandAccent is used for ordinary assistant Markdown. The response body is
+// part of the Vcode visual identity, so it stays dark gold even when a
+// secondary editor/theme accent is configured.
+func brandAccent(s string) string { return themeFg(vcodeBrandGold, s) }
+func reverse(s string) string     { return sgr(ansiReverse, s) }

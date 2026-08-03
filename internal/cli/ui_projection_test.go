@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -56,5 +57,17 @@ func TestMainCLIChromeUsesStableBrandGold(t *testing.T) {
 	}
 	if got := (chatTUI{planMode: true}).statusModeColor(); got != vcodeBrandGold {
 		t.Fatalf("plan chrome color=%+v, want brand gold %+v", got, vcodeBrandGold)
+	}
+}
+
+func TestMarkdownAccentUsesBrandGold(t *testing.T) {
+	if got := ansi.Strip(brandAccent("标题")); got != "标题" {
+		t.Fatalf("brand markdown accent changed content: %q", got)
+	}
+	if activeCLITheme.accent == vcodeBrandGold {
+		t.Skip("active theme already uses brand gold")
+	}
+	if strings.Contains(brandAccent("标题"), fmt.Sprintf("38;5;%d", activeCLITheme.accent.xterm)) {
+		t.Fatal("markdown should not inherit the selectable theme accent")
 	}
 }
