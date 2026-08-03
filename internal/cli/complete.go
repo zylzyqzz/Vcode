@@ -113,7 +113,61 @@ func (m *chatTUI) slashItems() []compItem {
 	for _, p := range m.prompts() {
 		items = append(items, compItem{label: "/" + p.Name, insert: "/" + p.Name + " ", hint: p.Description})
 	}
+	for i := range items {
+		items[i].hint = bilingualSlashHint(items[i].label, items[i].hint)
+	}
 	return items
+}
+
+var slashCommandBilingualHints = map[string]string{
+	"/compact":            "压缩上下文 · Compact context",
+	"/new":                "开启新会话 · Start a new session",
+	"/clear":              "清空当前上下文 · Clear current context",
+	"/cls":                "清屏但保留上下文 · Clear screen, keep context",
+	"/resume":             "恢复已保存会话 · Resume a saved session",
+	"/rename":             "重命名会话 · Rename the session",
+	"/rewind":             "回退到之前的轮次 · Rewind to an earlier turn",
+	"/tree":               "查看会话分支 · Show conversation tree",
+	"/branch":             "创建会话分支 · Create a conversation branch",
+	"/switch":             "切换会话分支 · Switch conversation branch",
+	"/mcp":                "管理 MCP 服务 · Manage MCP servers",
+	"/plugins":            "管理插件 · Manage plugins",
+	"/model":              "查看或切换模型 · List or switch models",
+	"/provider":           "查看或切换平台 · List or switch providers",
+	"/skills":             "管理技能 · Manage skills",
+	"/reload-cmd":         "重载自定义命令 · Reload custom commands",
+	"/hooks":              "管理 Hooks · Manage hooks",
+	"/paste-image":        "粘贴图片 · Paste an image",
+	"/output-style":       "切换输出风格 · Switch output style",
+	"/verbose":            "展开思考内容 · Toggle thinking details",
+	"/mouse":              "切换鼠标接管 · Toggle mouse capture",
+	"/diff-fold":          "折叠或展开差异 · Fold or expand diffs",
+	"/sandbox":            "查看沙箱状态 · Show sandbox status",
+	"/effort":             "设置推理强度 · Set reasoning effort",
+	"/auto-plan":          "设置自动规划 · Configure auto-plan",
+	"/reasoning-language": "设置思考语言 · Set reasoning language",
+	"/memory-v5":          "切换 Memory v5 · Toggle Memory v5",
+	"/theme":              "切换终端主题 · Switch terminal theme",
+	"/language":           "切换界面语言 · Switch interface language",
+	"/help":               "查看命令帮助 · Show command help",
+	"/memory":             "查看记忆 · Show memory",
+	"/migrate":            "迁移旧数据 · Migrate legacy data",
+	"/goal":               "设置当前目标 · Set the active goal",
+	"/remember":           "保存记忆 · Save a memory",
+	"/forget":             "删除记忆 · Forget a memory",
+	"/quit":               "退出 Vcode · Exit Vcode",
+	"/copy":               "复制回复 · Copy a response",
+	"/export":             "导出会话 · Export the session",
+}
+
+func bilingualSlashHint(label, fallback string) string {
+	if hint, ok := slashCommandBilingualHints[label]; ok {
+		// Use a neutral separator in help rows; the centred dot is reserved for
+		// compact status metadata and makes command descriptions look like a
+		// status chain.
+		return strings.Replace(hint, " · ", " / ", 1)
+	}
+	return fallback
 }
 
 // updateCompletion recomputes the menu from the current input: a slash menu

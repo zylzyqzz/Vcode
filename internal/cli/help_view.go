@@ -54,7 +54,7 @@ func writeHelpItems(b *strings.Builder, width int, title string, items []compIte
 }
 
 func builtinHelpItems() []compItem {
-	return []compItem{
+	items := []compItem{
 		{label: "/compact", hint: i18n.M.CmdCompact},
 		{label: "/new", hint: i18n.M.CmdNew},
 		{label: "/rename", hint: i18n.M.CmdRename},
@@ -86,6 +86,10 @@ func builtinHelpItems() []compItem {
 		{label: "/copy", hint: i18n.M.CmdCopy},
 		{label: "/export", hint: i18n.M.CmdExport},
 	}
+	for i := range items {
+		items[i].hint = bilingualSlashHint(items[i].label, items[i].hint)
+	}
+	return items
 }
 
 func customHelpItems(commands []command.Command) []compItem {
