@@ -2484,24 +2484,9 @@ func (m chatTUI) View() tea.View {
 
 	var modeTag string
 	if shellMode {
-		modeTag = lipgloss.NewStyle().
-			Background(lipgloss.Color(statusShellColor.hex)).
-			Foreground(lipgloss.Color("#ffffff")).
-			Bold(true).
-			Padding(0, 1).
-			Render("Shell")
+		modeTag = renderModeTag("Shell")
 	} else {
-		color := m.statusModeColor()
-		foreground := "#111827"
-		if m.planMode || m.goalMode {
-			foreground = "#ffffff"
-		}
-		modeTag = lipgloss.NewStyle().
-			Background(lipgloss.Color(color.hex)).
-			Foreground(lipgloss.Color(foreground)).
-			Bold(true).
-			Padding(0, 1).
-			Render(m.modeTagText())
+		modeTag = renderModeTag(m.modeTagText())
 	}
 
 	ctxTag := m.contextTag()
@@ -3246,6 +3231,16 @@ func (m chatTUI) modeTagText() string {
 		return "Plan"
 	}
 	return "Build"
+}
+
+// renderModeTag keeps mode switching visually distinct from filled status
+// pills used by other coding agents. It stays one terminal row high and uses
+// only a gold rounded frame, so it cannot collide with the composer layout.
+func renderModeTag(label string) string {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#b8860b")).
+		Bold(true).
+		Render("⟮ " + label + " ⟯")
 }
 
 func (m *chatTUI) toggleVerboseReasoning(notify bool) {
