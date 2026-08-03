@@ -106,20 +106,12 @@ func listConfiguredModels() int {
 	}
 	current := cfg.DefaultModel
 	fmt.Println("可用模型：")
-	seen := map[string]bool{}
-	for _, p := range cfg.Providers {
-		for _, model := range p.ChatModelList() {
-			ref := p.Name + "/" + model
-			if seen[ref] {
-				continue
-			}
-			seen[ref] = true
-			marker := "  "
-			if ref == current || model == current || p.Name == current {
-				marker = "✓ "
-			}
-			fmt.Printf("%s%s\n", marker, brandAccent(ref))
+	for _, ref := range configuredModelRefs(cfg) {
+		marker := "  "
+		if ref == current {
+			marker = "✓ "
 		}
+		fmt.Printf("%s%s\n", marker, brandAccent(ref))
 	}
 	fmt.Printf("\n当前默认：%s\n", brandAccent(current))
 	return 0
