@@ -36,8 +36,8 @@ func TestNoticeProjectionHidesInternalLifecycleNoise(t *testing.T) {
 
 func TestModeTagUsesGoldRoundedFrameWithoutBackground(t *testing.T) {
 	plain := ansi.Strip(renderModeTag("Build"))
-	if plain != "⟮ Build ⟯" {
-		t.Fatalf("mode tag=%q, want rounded one-line frame", plain)
+	if plain != "⟮─ Build ─⟯" {
+		t.Fatalf("mode tag=%q, want gold capsule frame", plain)
 	}
 	if strings.Contains(renderModeTag("Plan"), "48;") {
 		t.Fatal("mode tag must not use a background color")

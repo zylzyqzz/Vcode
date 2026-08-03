@@ -3023,9 +3023,9 @@ func (m chatTUI) computeStatusLineCount(width int) int {
 	// Replicate the first status line (mode tag + state) from View().
 	// ModeTag is rendered with Padding(0,1) in View() — add the same padding
 	// here so the visible width matches exactly.
-	modeTag := " " + m.modeTagText() + " "
+	modeTag := renderModeTag(m.modeTagText())
 	if shellMode {
-		modeTag = " Shell "
+		modeTag = renderModeTag("Shell")
 	}
 	status := "  " + modeTag
 	switch {
@@ -3234,13 +3234,13 @@ func (m chatTUI) modeTagText() string {
 }
 
 // renderModeTag keeps mode switching visually distinct from filled status
-// pills used by other coding agents. It stays one terminal row high and uses
-// only a gold rounded frame, so it cannot collide with the composer layout.
+// pills used by other coding agents. It uses a one-line gold capsule frame and
+// no background fill, so it does not change the composer layout.
 func renderModeTag(label string) string {
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#b8860b")).
 		Bold(true).
-		Render("⟮ " + label + " ⟯")
+		Render("⟮─ " + label + " ─⟯")
 }
 
 func (m *chatTUI) toggleVerboseReasoning(notify bool) {
