@@ -2133,6 +2133,7 @@ func configUsage() {
 	fmt.Print(`Usage:
   vcode model list
   vcode model use <MODEL>
+  vcode model add --name NAME --base-url URL [--model deepseek-v4-flash|deepseek-v4-pro]
   vcode config auto-plan [off|on]
   vcode config memory-v5 [off|observe|compact|on|status]
   vcode config reasoning-language [--local] [auto|zh|en]
