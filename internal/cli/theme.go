@@ -437,7 +437,7 @@ func applyTextareaTheme(ti *textarea.Model) {
 		Prompt:           weak,
 	}
 	if colorEnabled {
-		styles.Cursor.Color = themeLipColor(activeCLITheme.accent)
+		styles.Cursor.Color = themeLipColor(vcodeBrandGold)
 	} else {
 		styles.Cursor.Color = nil
 	}

@@ -4260,9 +4260,9 @@ func renderUserBubble(line string, width int, planMode bool) string {
 		return "│ " + prefix + line
 	}
 	if planMode {
-		return "  " + yellow(prefix+line)
+		return "  " + brandAccent(prefix+line)
 	}
-	return "  " + accent(prefix+line)
+	return "  " + brandAccent(prefix+line)
 }
 
 var cliImageRefRe = regexp.MustCompile(`(?:^|\s)@\.vcode/attachments/clipboard-\d{8}-\d{6}\.\d+(?:-(?:\d{6}|[a-f0-9]{8}))?\.(?:png|jpg|jpeg|gif|webp)`)

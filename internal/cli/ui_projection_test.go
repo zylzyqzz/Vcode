@@ -71,3 +71,12 @@ func TestMarkdownAccentUsesBrandGold(t *testing.T) {
 		t.Fatal("markdown should not inherit the selectable theme accent")
 	}
 }
+
+func TestSubmittedMessageUsesBrandGold(t *testing.T) {
+	if got := renderUserBubble("你好", 80, false); !strings.Contains(got, "你好") {
+		t.Fatalf("submitted message lost content: %q", got)
+	}
+	if strings.Contains(renderUserBubble("你好", 80, false), fmt.Sprintf("38;5;%d", activeCLITheme.accent.xterm)) && activeCLITheme.accent != vcodeBrandGold {
+		t.Fatal("submitted message should not inherit the selectable theme accent")
+	}
+}
