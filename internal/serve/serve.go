@@ -658,7 +658,7 @@ func (s *Server) finishTask(id string) {
 
 func (s *Server) resumeDurableTask() {
 	record := s.tasks.activeRecord()
-	if record == nil || record.Status != TaskPaused || record.ErrorClass != "runtime_restart" {
+	if record == nil || record.Status != TaskRecovering || record.ErrorClass != "runtime_restart" {
 		return
 	}
 	go func() {

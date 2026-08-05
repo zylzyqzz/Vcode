@@ -21,6 +21,7 @@ const (
 	TaskWaitingPermission TaskStatus = "waiting_permission"
 	TaskVerifying         TaskStatus = "verifying"
 	TaskPaused            TaskStatus = "paused"
+	TaskRecovering        TaskStatus = "recovering"
 	TaskCompleted         TaskStatus = "completed"
 	TaskPartial           TaskStatus = "partial"
 	TaskFailed            TaskStatus = "failed"
@@ -130,7 +131,7 @@ func (s *taskStore) load() error {
 	if newest != nil && !terminalTaskStatus(newest.Status) {
 		// A process restart cannot safely pretend an in-flight turn is still
 		// running. Keep the durable record visible and make recovery explicit.
-		newest.Status = TaskPaused
+		newest.Status = TaskRecovering
 		newest.ErrorClass = "runtime_restart"
 		newest.Error = "任务运行时已重启，请恢复后继续"
 		newest.UpdatedAt = time.Now().UTC()

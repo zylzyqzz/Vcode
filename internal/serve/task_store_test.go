@@ -49,7 +49,7 @@ func TestTaskStorePersistsRecordsAndResumesEventSequence(t *testing.T) {
 	}
 }
 
-func TestTaskStoreMarksInFlightTaskPausedAfterRestart(t *testing.T) {
+func TestTaskStoreMarksInFlightTaskRecoveringAfterRestart(t *testing.T) {
 	root := t.TempDir()
 	s := newTaskStore(root)
 	if _, err := s.start("task-2", "长任务", "goal", "deepseek", root, "session.jsonl"); err != nil {
@@ -61,8 +61,8 @@ func TestTaskStoreMarksInFlightTaskPausedAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := restarted.activeRecord()
-	if got == nil || got.Status != TaskPaused || got.ErrorClass != "runtime_restart" {
-		t.Fatalf("expected paused recovery record: %+v", got)
+	if got == nil || got.Status != TaskRecovering || got.ErrorClass != "runtime_restart" {
+		t.Fatalf("expected recovering record: %+v", got)
 	}
 
 	data, err := os.ReadFile(filepath.Join(root, ".tasks", "task-2.json"))
@@ -73,7 +73,7 @@ func TestTaskStoreMarksInFlightTaskPausedAfterRestart(t *testing.T) {
 	if err := json.Unmarshal(data, &persisted); err != nil {
 		t.Fatal(err)
 	}
-	if persisted.Status != TaskPaused {
+	if persisted.Status != TaskRecovering {
 		t.Fatalf("restart status was not persisted: %+v", persisted)
 	}
 }
