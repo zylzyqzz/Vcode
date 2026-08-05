@@ -1,2 +1,0 @@
-xin.aimj.vcode:style/AppTheme = 0x7f020000
-xin.aimj.vcode:drawable/ic_vcode = 0x7f010000

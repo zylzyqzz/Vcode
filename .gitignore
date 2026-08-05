@@ -6,6 +6,11 @@
 /vcode
 /vcode.exe
 
+# Generated mobile builds and local serve task state
+/android/.gradle/
+/android/app/build/
+/internal/serve/.tasks/
+
 # Website (Astro) build output
 /site/dist/
 /site/.astro/

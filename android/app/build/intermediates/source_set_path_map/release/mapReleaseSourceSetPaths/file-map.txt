@@ -1,7 +1,0 @@
-xin.aimj.vcode.app-pngs-0 C:\Users\Administrator\Documents\Codex\2026-08-01\new-chat\work\Vcode\android\app\build\generated\res\pngs\release
-xin.aimj.vcode.app-resValues-1 C:\Users\Administrator\Documents\Codex\2026-08-01\new-chat\work\Vcode\android\app\build\generated\res\resValues\release
-xin.aimj.vcode.app-packageReleaseResources-2 C:\Users\Administrator\Documents\Codex\2026-08-01\new-chat\work\Vcode\android\app\build\intermediates\incremental\release\packageReleaseResources\merged.dir
-xin.aimj.vcode.app-packageReleaseResources-3 C:\Users\Administrator\Documents\Codex\2026-08-01\new-chat\work\Vcode\android\app\build\intermediates\incremental\release\packageReleaseResources\stripped.dir
-xin.aimj.vcode.app-release-4 C:\Users\Administrator\Documents\Codex\2026-08-01\new-chat\work\Vcode\android\app\build\intermediates\merged_res\release\mergeReleaseResources
-xin.aimj.vcode.app-main-5 C:\Users\Administrator\Documents\Codex\2026-08-01\new-chat\work\Vcode\android\app\src\main\res
-xin.aimj.vcode.app-release-6 C:\Users\Administrator\Documents\Codex\2026-08-01\new-chat\work\Vcode\android\app\src\release\res
