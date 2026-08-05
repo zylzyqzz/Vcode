@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"vcode/internal/event"
@@ -70,7 +71,16 @@ func (s *Server) runPipeline(id, goal string) {
 
 	result := verify.Run(ctx, ctrl.WorkspaceRoot())
 	_ = s.tasks.setVerification(id, string(result.Status))
-	if result.Status != verify.Verified {
+	for attempt := 1; result.Status != verify.Verified && attempt <= 2; attempt++ {
+		_ = s.tasks.setAgent(id, "Debugger", TaskRecovering)
+		if err := runStage("Debugger", fmt.Sprintf("验证第 %d 次未通过。请根据失败证据定位根因并修复，只修改必要文件。完成后说明修复内容。\n失败证据：%s", attempt, result.Error()), false); err != nil {
+			s.finishPipeline(id, TaskPartial, "debugger_failed", err.Error())
+			return
+		}
+		result = verify.Run(ctx, ctrl.WorkspaceRoot())
+		_ = s.tasks.setVerification(id, string(result.Status))
+	}
+	if false && result.Status != verify.Verified {
 		_ = runStage("Debugger", "验证没有完全通过。请根据验证失败证据定位根因并修复，只修改必要文件。完成后说明修复内容。\n\n失败证据："+result.Error(), false)
 		result = verify.Run(ctx, ctrl.WorkspaceRoot())
 		_ = s.tasks.setVerification(id, string(result.Status))
