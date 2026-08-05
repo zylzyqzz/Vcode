@@ -10,17 +10,20 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"vcode/internal/agent"
 	"vcode/internal/boot"
+	"vcode/internal/bridge"
 	"vcode/internal/config"
 	"vcode/internal/control"
 	"vcode/internal/event"
@@ -32,28 +35,65 @@ import (
 //go:embed index.html
 var indexHTML []byte
 
+//go:embed manifest.json
+var manifestJSON []byte
+
+//go:embed sw.js
+var serviceWorkerJS []byte
+
+//go:embed favicon.svg
+var faviconSVG []byte
+
 // Server wires a controller to its HTTP surface. The Broadcaster must be the
 // same sink the controller was constructed with, so events reach SSE clients.
 type Server struct {
-	mu         sync.RWMutex // guards ctrl, which switchModel swaps at runtime
-	ctrl       control.SessionAPI
-	bc         *Broadcaster
-	titleProv  provider.Provider // lightweight flash provider for session titles
-	titlePrice *provider.Pricing
-	titles     *titleCache
-	auth       *authGate // nil when auth is disabled
+	mu            sync.RWMutex // guards ctrl, which switchModel swaps at runtime
+	taskMu        sync.Mutex
+	ctrl          control.SessionAPI
+	bc            *Broadcaster
+	tasks         *taskStore
+	projects      *projectStore
+	titleProv     provider.Provider // lightweight flash provider for session titles
+	titlePrice    *provider.Pricing
+	titles        *titleCache
+	auth          *authGate // nil when auth is disabled
+	workspaceLock *workspaceLock
+	pipelineMu    sync.Mutex
+	pipelines     map[string]struct{}
+	relay         *bridgeRelay
 }
 
 // New builds a Server. bc must be the controller's event sink.
 // serveCfg controls authentication (none, token, or password).
 func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) *Server {
 	s := &Server{
-		ctrl:   ctrl,
-		bc:     bc,
-		titles: newTitleCache(ctrl.SessionDir()),
-		auth:   newAuthGate(serveCfg),
+		ctrl:      ctrl,
+		bc:        bc,
+		tasks:     newTaskStore(ctrl.SessionDir()),
+		projects:  newProjectStore(ctrl.SessionDir()),
+		titles:    newTitleCache(ctrl.SessionDir()),
+		auth:      newAuthGate(serveCfg),
+		pipelines: map[string]struct{}{},
+		relay:     newBridgeRelay(serveCfg.BridgeToken),
 	}
+	if err := s.tasks.load(); err != nil {
+		slog.Warn("serve: task journal load failed", "err", err)
+	}
+	if err := s.projects.load(); err != nil {
+		slog.Warn("serve: project index load failed", "err", err)
+	}
+	bc.SetTaskJournal(s.tasks)
+	bc.SetTaskDoneHandler(s.finishTask)
+	bc.SetPipelineActive(s.pipelineActive)
+	s.relay.onEvent = func(message bridge.Message) {
+		bc.EmitRemote(message.TaskID, message.Seq, message.Payload)
+	}
+	// Build is the fast execution mode: tool approvals are fully automatic.
+	// Plan/memory decisions still have their own explicit human gates inside the
+	// controller and are not bypassed by YOLO.
+	ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
 	s.initTitleProvider()
+	s.resumeDurableTask()
 	return s
 }
 
@@ -136,7 +176,39 @@ func (s *Server) switchModel(ctx context.Context, ref string) error {
 	// orphan a duplicate (#2807).
 	newPath := agent.ContinueSessionPath(prevPath, newCtrl.SessionDir(), newCtrl.Label())
 	newCtrl.AdoptHistory(carried, newPath)
+	newCtrl.SetToolApprovalMode(control.ToolApprovalYolo)
 
+	s.ctrl = newCtrl
+	cur.Close()
+	return nil
+}
+
+func (s *Server) switchWorkspace(ctx context.Context, root string) error {
+	root, err := filepath.Abs(strings.TrimSpace(root))
+	if err != nil || root == "" {
+		return errors.New("invalid workspace")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur := s.ctrl
+	if cur.Running() {
+		return errors.New("cannot switch workspace while a turn is running")
+	}
+	carried := cur.History()
+	newCtrl, err := boot.Build(ctx, boot.Options{
+		Model:         cur.Label(),
+		Sink:          s.bc,
+		Stderr:        os.Stderr,
+		WorkspaceRoot: root,
+		SessionDir:    cur.SessionDir(),
+		RequireKey:    true,
+	})
+	if err != nil {
+		return fmt.Errorf("switch workspace: %w", err)
+	}
+	newPath := agent.ContinueSessionPath(cur.SessionPath(), newCtrl.SessionDir(), newCtrl.Label())
+	newCtrl.AdoptHistory(carried, newPath)
+	newCtrl.SetToolApprovalMode(control.ToolApprovalYolo)
 	s.ctrl = newCtrl
 	cur.Close()
 	return nil
@@ -214,6 +286,10 @@ func (s *Server) HandlerWithCORS(origin string) http.Handler {
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.index)
+	mux.HandleFunc("GET /pair", s.pairingPage)
+	mux.HandleFunc("GET /manifest.json", s.manifest)
+	mux.HandleFunc("GET /sw.js", s.serviceWorker)
+	mux.HandleFunc("GET /favicon.svg", s.favicon)
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("GET /history", s.history)
 	mux.HandleFunc("GET /context", s.context)
@@ -236,11 +312,99 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /checkpoints", s.checkpoints)
 	mux.HandleFunc("GET /branches", s.branches)
 	mux.HandleFunc("GET /status", s.status)
+	mux.HandleFunc("GET /tasks/{id}", s.task)
+	mux.HandleFunc("GET /tasks", s.tasksList)
+	mux.HandleFunc("GET /tasks/{id}/events", s.taskEvents)
+	mux.HandleFunc("GET /api/projects", s.apiProjects)
+	mux.HandleFunc("GET /api/targets", s.apiTargets)
+	mux.HandleFunc("GET /api/targets/{id}", s.apiTarget)
+	mux.HandleFunc("POST /api/targets/pair/approve", s.apiPairApprove)
+	mux.HandleFunc("POST /api/targets/{id}/tasks", s.apiTargetTask)
+	mux.HandleFunc("POST /api/projects", s.apiProjectCreate)
+	mux.HandleFunc("POST /api/projects/{id}/clone", s.apiProjectClone)
+	mux.HandleFunc("POST /api/projects/{id}/branch", s.apiProjectBranch)
+	mux.HandleFunc("GET /api/tasks/{id}/diff", s.apiTaskDiff)
+	mux.HandleFunc("POST /api/tasks/{id}/commit", s.apiTaskCommit)
+	mux.HandleFunc("POST /api/tasks/{id}/push", s.apiTaskPush)
+	mux.HandleFunc("POST /api/tasks/{id}/pr", s.apiTaskPR)
+	mux.HandleFunc("POST /api/tasks/{id}/control", s.apiTaskControl)
+	mux.HandleFunc("GET /models", s.modelConfigs)
+	mux.HandleFunc("POST /models", s.addModelConfig)
+	mux.HandleFunc("POST /models/default", s.setDefaultModel)
+	mux.HandleFunc("POST /attachment", s.uploadAttachment)
+	mux.HandleFunc("POST /attachment/delete", s.deleteAttachment)
 	mux.HandleFunc("GET /sessions", s.sessions)
 	mux.HandleFunc("GET /skills", s.skills)
 	mux.HandleFunc("GET /todos", s.todos)
 	mux.HandleFunc("POST /delete-session", s.deleteSession)
-	return logMiddleware(s.auth.middleware(csrfGuard(mux)))
+	mux.HandleFunc("POST /rename-session", s.renameSession)
+	mux.HandleFunc("POST /archive-session", s.archiveSession)
+	mux.HandleFunc("POST /unarchive-session", s.unarchiveSession)
+	protected := logMiddleware(s.auth.middleware(csrfGuard(mux)))
+	outer := http.NewServeMux()
+	outer.HandleFunc("GET /api/bridge/connect", s.bridgeConnect)
+	outer.HandleFunc("POST /api/bridge/pair", s.apiBridgePair)
+	outer.Handle("/", protected)
+	return outer
+}
+
+// uploadAttachment stores an image in the active workspace and returns the
+// repo-relative reference that the controller already understands.
+func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 14<<20)
+	var body struct {
+		Name string `json:"name"`
+		Data string `json:"data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Data) == "" {
+		http.Error(w, "missing image data", http.StatusBadRequest)
+		return
+	}
+	root := s.ctl().WorkspaceRoot()
+	if strings.TrimSpace(root) == "" {
+		http.Error(w, "no workspace is configured", http.StatusConflict)
+		return
+	}
+	ref, err := control.SaveImageDataURLInRoot(root, body.Data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"ref": ref, "name": body.Name})
+}
+
+func (s *Server) deleteAttachment(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Ref string `json:"ref"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "missing attachment reference", http.StatusBadRequest)
+		return
+	}
+	root, err := filepath.Abs(s.ctl().WorkspaceRoot())
+	if err != nil || root == "." {
+		http.Error(w, "no workspace is configured", http.StatusConflict)
+		return
+	}
+	ref := filepath.FromSlash(strings.TrimSpace(body.Ref))
+	if !strings.HasPrefix(filepath.ToSlash(ref), ".vcode/attachments/") || strings.Contains(ref, "..") {
+		http.Error(w, "invalid attachment reference", http.StatusBadRequest)
+		return
+	}
+	target := filepath.Join(root, ref)
+	attachRoot := filepath.Join(root, ".vcode", "attachments")
+	cleanTarget, _ := filepath.Abs(target)
+	cleanRoot, _ := filepath.Abs(attachRoot)
+	if cleanTarget == cleanRoot || !strings.HasPrefix(cleanTarget, cleanRoot+string(filepath.Separator)) {
+		http.Error(w, "attachment is outside workspace", http.StatusBadRequest)
+		return
+	}
+	if err := os.Remove(cleanTarget); err != nil && !os.IsNotExist(err) {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // csrfGuard rejects state-changing requests that don't carry a JSON content type.
@@ -314,6 +478,24 @@ func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
 	html := string(indexHTML)
 	html = strings.ReplaceAll(html, "__LANG__", lang)
 	_, _ = w.Write([]byte(html))
+}
+
+func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(manifestJSON)
+}
+
+func (s *Server) serviceWorker(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write(serviceWorkerJS)
+}
+
+func (s *Server) favicon(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(faviconSVG)
 }
 
 // sseKeepaliveInterval is how often the /events handler emits a `: ping`
@@ -409,8 +591,165 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.ctl().SubmitHTTP(body.Input)
+	s.taskMu.Lock()
+	usePipeline := false
+	pipelineID := ""
+	if !s.ctl().Running() {
+		id := fmt.Sprintf("task-%d", time.Now().UnixNano())
+		workspace := s.ctl().WorkspaceRoot()
+		var err error
+		if current := s.tasks.activeRecord(); current != nil && (current.Status == TaskPaused || (current.Status == TaskQueued && s.workspaceLock != nil && s.workspaceLock.ID == current.ID)) && current.SessionID == s.ctl().SessionPath() {
+			id = current.ID
+			if current.Status == TaskPaused {
+				err = s.tasks.adoptPaused(id)
+			}
+		} else {
+			if strings.TrimSpace(workspace) != "" {
+				s.workspaceLock, err = acquireWorkspaceLock(workspace, id)
+			}
+			if err == nil {
+				_, err = s.tasks.start(id, body.Input, currentWebMode(s.ctl()), s.ctl().Label(), workspace, s.ctl().SessionPath())
+			}
+		}
+		if err != nil {
+			s.taskMu.Unlock()
+			http.Error(w, "start task: "+err.Error(), http.StatusConflict)
+			return
+		}
+		s.bc.SetActiveTask(id)
+		usePipeline = currentWebMode(s.ctl()) == "build" && shouldUsePipeline(body.Input)
+		if usePipeline {
+			s.beginPipeline(id)
+			pipelineID = id
+		}
+	}
+	s.taskMu.Unlock()
+	if usePipeline {
+		go s.runPipeline(pipelineID, body.Input)
+	} else {
+		s.ctl().SubmitHTTP(body.Input)
+	}
 	w.WriteHeader(http.StatusAccepted)
+}
+
+func (s *Server) finishTask(id string) {
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	if s.workspaceLock != nil && s.workspaceLock.ID == id {
+		if err := s.workspaceLock.release(); err != nil {
+			slog.Warn("serve: workspace lock release failed", "task", id, "err", err)
+		}
+		s.workspaceLock = nil
+	}
+}
+
+func (s *Server) resumeDurableTask() {
+	record := s.tasks.activeRecord()
+	if record == nil || record.Status != TaskPaused || record.ErrorClass != "runtime_restart" {
+		return
+	}
+	go func() {
+		time.Sleep(250 * time.Millisecond)
+		if s.ctl().Running() {
+			return
+		}
+		var lock *workspaceLock
+		var err error
+		if strings.TrimSpace(record.Workspace) != "" {
+			lock, err = acquireWorkspaceLock(record.Workspace, record.ID)
+		}
+		if err != nil {
+			_ = s.tasks.update(record.ID, TaskBlocked, "workspace_conflict", err.Error())
+			return
+		}
+		s.taskMu.Lock()
+		s.workspaceLock = lock
+		s.taskMu.Unlock()
+		if err := s.tasks.adoptPaused(record.ID); err != nil {
+			_ = lock.release()
+			return
+		}
+		s.bc.SetActiveTask(record.ID)
+		s.ctl().SubmitHTTP("继续执行上次未完成的任务：" + record.Goal)
+	}()
+}
+
+func currentWebMode(ctrl control.SessionAPI) string {
+	if ctrl.PlanMode() {
+		return "plan"
+	}
+	if strings.TrimSpace(ctrl.Goal()) != "" {
+		return "goal"
+	}
+	return "build"
+}
+
+func (s *Server) task(w http.ResponseWriter, r *http.Request) {
+	id := filepath.Base(strings.TrimSpace(r.PathValue("id")))
+	if id == "" || id == "." || id == ".." || strings.Contains(id, "/") {
+		http.Error(w, "invalid task id", http.StatusBadRequest)
+		return
+	}
+	if s.relay != nil {
+		if remote, ok := s.relay.task(id); ok {
+			writeJSON(w, remote)
+			return
+		}
+	}
+	path := filepath.Join(s.tasks.root, id+".json")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(data)
+}
+
+func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request) {
+	id := filepath.Base(strings.TrimSpace(r.PathValue("id")))
+	if id == "" || id == "." || id == ".." || strings.Contains(id, "/") {
+		http.Error(w, "invalid task id", http.StatusBadRequest)
+		return
+	}
+	after := uint64(0)
+	if raw := r.URL.Query().Get("after"); raw != "" {
+		if _, err := fmt.Sscanf(raw, "%d", &after); err != nil {
+			http.Error(w, "invalid event sequence", http.StatusBadRequest)
+			return
+		}
+	}
+	if s.relay != nil {
+		remote, known := s.relay.eventsAfter(id, after)
+		if known {
+			writeJSON(w, remote)
+			return
+		}
+	}
+	events, err := s.tasks.events(id, after)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, events)
+}
+
+func (s *Server) tasksList(w http.ResponseWriter, _ *http.Request) {
+	records, err := s.tasks.list()
+	if err != nil {
+		http.Error(w, "task journal unavailable", http.StatusInternalServerError)
+		return
+	}
+	if s.relay != nil {
+		for _, remote := range s.relay.taskList() {
+			records = append(records, remote)
+		}
+	}
+	writeJSON(w, records)
 }
 
 func (s *Server) cancel(w http.ResponseWriter, _ *http.Request) {
@@ -430,6 +769,13 @@ func (s *Server) approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.ctl().Approve(body.ID, body.Allow, body.Session, body.Persist)
+	if task := s.tasks.activeRecord(); task != nil {
+		_ = s.tasks.audit(task.ID, "approval_decision", map[string]string{
+			"allow":   strconv.FormatBool(body.Allow),
+			"session": strconv.FormatBool(body.Session),
+			"persist": strconv.FormatBool(body.Persist),
+		})
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -442,6 +788,13 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.ctl().SetPlanMode(body.On)
+	// Plan is the only interactive/read-only mode. Build and Goal are
+	// deliberate YOLO execution modes, including dangerous tool calls.
+	if body.On {
+		s.ctl().SetToolApprovalMode(control.ToolApprovalAsk)
+	} else {
+		s.ctl().SetToolApprovalMode(control.ToolApprovalYolo)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -528,6 +881,14 @@ func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		slog.Warn("serve: writeJSON encode failed", "err", err)
+	}
+}
+
+func writeJSONStatus(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Warn("serve: writeJSONStatus encode failed", "err", err)
 	}
 }
 
@@ -727,11 +1088,15 @@ func (s *Server) goal(w http.ResponseWriter, r *http.Request) {
 	goal := strings.TrimSpace(body.Goal)
 	if goal == "" {
 		s.ctl().ClearGoal()
+		if !s.ctl().PlanMode() {
+			s.ctl().SetToolApprovalMode(control.ToolApprovalYolo)
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	// Disable plan mode before setting the goal, mirroring the desktop.
 	s.ctl().SetPlanMode(false)
+	s.ctl().SetToolApprovalMode(control.ToolApprovalYolo)
 	s.ctl().SetGoal(goal)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -866,6 +1231,9 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		"cacheHit":         hit,
 		"cacheMiss":        miss,
 	}
+	if task := s.tasks.activeRecord(); task != nil {
+		sess["task"] = task
+	}
 	if u := s.ctl().LastUsage(); u != nil {
 		sess["lastUsage"] = u
 	}
@@ -937,32 +1305,54 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type sessionEntry struct {
-		Name    string `json:"name"`
-		Path    string `json:"path"`
-		Title   string `json:"title,omitempty"`
-		Turns   int    `json:"turns,omitempty"`
-		Current bool   `json:"current,omitempty"`
+		Name     string `json:"name"`
+		Path     string `json:"path"`
+		Title    string `json:"title,omitempty"`
+		Turns    int    `json:"turns,omitempty"`
+		Current  bool   `json:"current,omitempty"`
+		Archived bool   `json:"archived,omitempty"`
+	}
+	type sessionFile struct {
+		entry    os.DirEntry
+		dir      string
+		archived bool
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		writeJSON(w, []any{})
 		return
 	}
+	files := make([]sessionFile, 0, len(entries))
+	for _, e := range entries {
+		files = append(files, sessionFile{entry: e, dir: dir})
+	}
+	archiveDir := filepath.Join(dir, "archive")
+	if archivedEntries, archiveErr := os.ReadDir(archiveDir); archiveErr == nil {
+		for _, e := range archivedEntries {
+			files = append(files, sessionFile{entry: e, dir: archiveDir, archived: true})
+		}
+	}
 	current := filepath.Clean(s.ctl().SessionPath())
 	var out []sessionEntry
-	for _, e := range entries {
+	for _, f := range files {
+		e := f.entry
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
 			continue
 		}
-		path := filepath.Join(dir, e.Name())
+		path := filepath.Join(f.dir, e.Name())
 		if agent.IsCleanupPending(path) {
 			continue
 		}
 		name := strings.TrimSuffix(e.Name(), ".jsonl")
-		entry := sessionEntry{Name: name, Path: path, Current: filepath.Clean(path) == current}
+		entry := sessionEntry{Name: name, Path: path, Current: filepath.Clean(path) == current, Archived: f.archived}
 		if first, turns := previewSessionFile(path); turns > 0 {
 			entry.Turns = turns
-			entry.Title = s.sessionTitle(r.Context(), e.Name(), first, fileModNano(e))
+			// Never block the initial mobile render on a title-model request.
+			if cached, ok := s.titles.get(e.Name(), fileModNano(e)); ok {
+				entry.Title = cached
+			} else {
+				entry.Title = previewTitle(first)
+			}
 		}
 		out = append(out, entry)
 	}
@@ -974,6 +1364,90 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		out = []sessionEntry{}
 	}
 	writeJSON(w, out)
+}
+
+func (s *Server) archiveSession(w http.ResponseWriter, r *http.Request)   { s.moveSession(w, r, true) }
+func (s *Server) unarchiveSession(w http.ResponseWriter, r *http.Request) { s.moveSession(w, r, false) }
+
+func (s *Server) renameSession(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name  string `json:"name"`
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	title := strings.TrimSpace(req.Title)
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\\`) || title == "" {
+		http.Error(w, "invalid session name or title", http.StatusBadRequest)
+		return
+	}
+	if len([]rune(title)) > 80 {
+		title = string([]rune(title)[:80])
+	}
+	dir := s.ctl().SessionDir()
+	if dir == "" {
+		http.Error(w, "sessions disabled", http.StatusBadRequest)
+		return
+	}
+	path := filepath.Join(dir, name+".jsonl")
+	if _, err := os.Stat(path); err != nil {
+		path = filepath.Join(dir, "archive", name+".jsonl")
+	}
+	if _, err := os.Stat(path); err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	mod := int64(0)
+	if info, err := os.Stat(path); err == nil {
+		mod = info.ModTime().UnixNano()
+	}
+	s.titles.put(name, title, mod)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) moveSession(w http.ResponseWriter, r *http.Request, archive bool) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\\`) {
+		http.Error(w, "invalid session name", http.StatusBadRequest)
+		return
+	}
+	dir := s.ctl().SessionDir()
+	if dir == "" {
+		http.Error(w, "sessions disabled", http.StatusBadRequest)
+		return
+	}
+	fromDir, toDir := dir, filepath.Join(dir, "archive")
+	if !archive {
+		fromDir, toDir = filepath.Join(dir, "archive"), dir
+	}
+	from := filepath.Join(fromDir, name+".jsonl")
+	if filepath.Clean(from) == filepath.Clean(s.ctl().SessionPath()) {
+		http.Error(w, "cannot move active session", http.StatusConflict)
+		return
+	}
+	if _, err := os.Stat(from); err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if err := os.MkdirAll(toDir, 0o700); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := os.Rename(from, filepath.Join(toDir, name+".jsonl")); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // deleteSession removes a saved session by the session name returned from /sessions.
@@ -1000,6 +1474,9 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := filepath.Join(dir, name+".jsonl")
+	if _, err := os.Stat(target); os.IsNotExist(err) {
+		target = filepath.Join(dir, "archive", name+".jsonl")
+	}
 	abs, err := filepath.Abs(target)
 	if err != nil {
 		http.Error(w, "invalid session path", http.StatusBadRequest)

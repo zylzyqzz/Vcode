@@ -111,6 +111,24 @@ func TestServeEndpoints(t *testing.T) {
 		t.Fatalf("invalid tool approval mode status = %d, want 400", resp.StatusCode)
 	}
 
+	resp, err = http.Post(srv.URL+"/goal", "application/json", strings.NewReader(`{"goal":"持续完成开发任务"}`))
+	if err != nil || resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("goal = %v / status %d", err, resp.StatusCode)
+	}
+	resp.Body.Close()
+	if got := ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
+		t.Fatalf("goal approval mode = %q, want yolo", got)
+	}
+
+	resp, err = http.Post(srv.URL+"/plan", "application/json", strings.NewReader(`{"on":true}`))
+	if err != nil || resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("plan after goal = %v / status %d", err, resp.StatusCode)
+	}
+	resp.Body.Close()
+	if got := ctrl.ToolApprovalMode(); got != control.ToolApprovalAsk {
+		t.Fatalf("plan approval mode = %q, want ask", got)
+	}
+
 	if resp, _ := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{}`)); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("empty submit should be 400, got %d", resp.StatusCode)
 	}

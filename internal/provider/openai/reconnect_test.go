@@ -42,10 +42,10 @@ func rstAfter(t *testing.T, w http.ResponseWriter, prelude string) {
 // first-token gap, before any token is emitted. The drop must be replayed
 // transparently — the caller sees one clean stream, never an error.
 func TestStreamReconnectsOnEarlyConnReset(t *testing.T) {
-	var reqs int
+	var reqs atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqs++
-		if reqs == 1 {
+		request := reqs.Add(1)
+		if request == 1 {
 			rstAfter(t, w, ": keep-alive\n\n") // a comment line, zero model output
 			return
 		}
@@ -83,8 +83,8 @@ func TestStreamReconnectsOnEarlyConnReset(t *testing.T) {
 	if text.String() != "recovered" {
 		t.Errorf("text = %q, want %q", text.String(), "recovered")
 	}
-	if reqs != 2 {
-		t.Errorf("server saw %d requests, want 2 (one reset + one replay)", reqs)
+	if got := reqs.Load(); got != 2 {
+		t.Errorf("server saw %d requests, want 2 (one reset + one replay)", got)
 	}
 }
 
@@ -147,11 +147,11 @@ func TestStreamCancelDoesNotReconnect(t *testing.T) {
 // arguments that then 400 on every replay. Before output, the cut must be
 // replayed; the caller sees one clean stream with the full tool call.
 func TestStreamTreatsCleanEOFWithoutDoneAsCut(t *testing.T) {
-	var reqs int
+	var reqs atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqs++
+		request := reqs.Add(1)
 		w.Header().Set("Content-Type", "text/event-stream")
-		if reqs == 1 {
+		if request == 1 {
 			_, _ = io.WriteString(w, ": keep-alive\n\n") // clean close, no [DONE], no finish_reason
 			return
 		}
@@ -181,8 +181,8 @@ func TestStreamTreatsCleanEOFWithoutDoneAsCut(t *testing.T) {
 	if call == nil || call.Arguments != `{"cmd": "ls"}` {
 		t.Errorf("tool call = %+v, want complete arguments from the replay", call)
 	}
-	if reqs != 2 {
-		t.Errorf("server saw %d requests, want 2 (one cut + one replay)", reqs)
+	if got := reqs.Load(); got != 2 {
+		t.Errorf("server saw %d requests, want 2 (one cut + one replay)", got)
 	}
 }
 
@@ -257,9 +257,9 @@ func TestStreamAcceptsFinishReasonWithoutDone(t *testing.T) {
 // token has streamed, a mid-stream reset must surface as an error rather than
 // replaying the request (which would re-emit the already-shown text).
 func TestStreamDoesNotReplayAfterOutput(t *testing.T) {
-	var reqs int
+	var reqs atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqs++
+		reqs.Add(1)
 		rstAfter(t, w, "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n")
 	}))
 	defer srv.Close()
@@ -295,7 +295,7 @@ func TestStreamDoesNotReplayAfterOutput(t *testing.T) {
 	if !gotInterrupted {
 		t.Error("a reset after output should be marked as a stream interruption")
 	}
-	if reqs != 1 {
-		t.Errorf("server saw %d requests, want 1 (no replay after output)", reqs)
+	if got := reqs.Load(); got != 1 {
+		t.Errorf("server saw %d requests, want 1 (no replay after output)", got)
 	}
 }

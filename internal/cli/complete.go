@@ -61,6 +61,7 @@ const (
 // built-in verbs, custom commands, skills (each as "/<name>"), and MCP prompts.
 func (m *chatTUI) slashItems() []compItem {
 	items := []compItem{
+		{label: "/连接", insert: "/连接", hint: "生成手机配对码 · Pair this computer with the phone app"},
 		{label: "/compact", insert: "/compact ", hint: i18n.M.CmdCompact},
 		{label: "/new", insert: "/new ", hint: i18n.M.CmdNew},
 		{label: "/clear", insert: "/clear", hint: i18n.M.CmdClear},

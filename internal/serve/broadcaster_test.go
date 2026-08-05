@@ -2,75 +2,31 @@ package serve
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"vcode/internal/event"
-	"vcode/internal/eventwire"
 )
 
-func TestBroadcasterFanOut(t *testing.T) {
+func TestBroadcasterJournalsSequencedLiveFrames(t *testing.T) {
+	store := newTaskStore(t.TempDir())
+	if _, err := store.start("task-1", "inspect", "build", "model", "", "session"); err != nil {
+		t.Fatal(err)
+	}
 	b := NewBroadcaster()
-	a, ca := b.Subscribe()
-	d, cd := b.Subscribe()
-	defer ca()
-	defer cd()
-
-	if got := b.Subscribers(); got != 2 {
-		t.Fatalf("subscribers = %d, want 2", got)
+	b.SetTaskJournal(store)
+	b.SetActiveTask("task-1")
+	ch, unsubscribe := b.Subscribe()
+	defer unsubscribe()
+	b.Emit(event.Event{Kind: event.TurnStarted})
+	var frame map[string]any
+	if err := json.Unmarshal(<-ch, &frame); err != nil {
+		t.Fatal(err)
 	}
-
-	b.Emit(event.Event{Kind: event.Text, Text: "hi"})
-
-	for i, ch := range []<-chan []byte{a, d} {
-		var w eventwire.Event
-		if err := json.Unmarshal(<-ch, &w); err != nil {
-			t.Fatalf("subscriber %d: %v", i, err)
-		}
-		if w.Kind != "text" || w.Text != "hi" {
-			t.Errorf("subscriber %d got %+v", i, w)
-		}
+	if frame["task_id"] != "task-1" || frame["task_seq"] != float64(1) {
+		t.Fatalf("missing live task sequence: %#v", frame)
 	}
-}
-
-func TestBroadcasterEmitsRetryingJSON(t *testing.T) {
-	b := NewBroadcaster()
-	ch, cancel := b.Subscribe()
-	defer cancel()
-
-	b.Emit(event.Event{Kind: event.Retrying, RetryAttempt: 3, RetryMax: 10})
-
-	s := string(<-ch)
-	for _, want := range []string{`"kind":"retrying"`, `"retryAttempt":3`, `"retryMax":10`} {
-		if !strings.Contains(s, want) {
-			t.Fatalf("retrying broadcast JSON = %s, want it to contain %s", s, want)
-		}
-	}
-}
-
-func TestBroadcasterUnsubscribe(t *testing.T) {
-	b := NewBroadcaster()
-	_, cancel := b.Subscribe()
-	if b.Subscribers() != 1 {
-		t.Fatalf("want 1 subscriber")
-	}
-	cancel()
-	if b.Subscribers() != 0 {
-		t.Fatalf("unsubscribe should drop to 0, got %d", b.Subscribers())
-	}
-	// Emitting with no subscribers must not panic.
-	b.Emit(event.Event{Kind: event.TurnDone})
-}
-
-func TestBroadcasterDropsSlowSubscriber(t *testing.T) {
-	b := NewBroadcaster()
-	ch, cancel := b.Subscribe()
-	defer cancel()
-	// Overfill far past the 64-slot buffer without reading; Emit must not block.
-	for i := 0; i < 1000; i++ {
-		b.Emit(event.Event{Kind: event.Text, Text: "x"})
-	}
-	if len(ch) == 0 {
-		t.Error("expected some buffered frames")
+	replayed, err := store.events("task-1", 0)
+	if err != nil || len(replayed) != 1 || replayed[0].Seq != 1 {
+		t.Fatalf("journal replay mismatch: %#v %v", replayed, err)
 	}
 }

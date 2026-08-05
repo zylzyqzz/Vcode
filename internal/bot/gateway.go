@@ -1715,6 +1715,25 @@ func (gw *BotGateway) runTurn(ctx context.Context, adapter Adapter, key string, 
 	state.lastActive = time.Now()
 	gw.mu.Unlock()
 
+	// WeChat typing indicators expire quickly. Keep the indicator alive for the
+	// whole model/tool turn instead of sending it only once at turn start.
+	if msg.Platform == PlatformWeixin {
+		go func() {
+			ticker := time.NewTicker(4 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-turnCtx.Done():
+					return
+				case <-ticker.C:
+					if err := adapter.SendTyping(turnCtx, msg.ChatID); err != nil {
+						gw.logger.Debug("weixin typing refresh failed", "platform", msg.Platform, "chat", hashID(msg.ChatID), "err", err)
+					}
+				}
+			}
+		}()
+	}
+
 	// 运行一轮对话
 	err := state.ctrl.RunTurn(turnCtx, input)
 	sink.Emit(event.Event{Kind: event.TurnDone, Err: err})

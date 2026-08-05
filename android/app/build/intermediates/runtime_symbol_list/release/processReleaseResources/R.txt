@@ -1,0 +1,2 @@
+int drawable ic_vcode 0x7f010000
+int style AppTheme 0x7f020000

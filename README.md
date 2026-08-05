@@ -208,6 +208,25 @@ Task checkpoints preserve node state and shared facts. They can be restored by
 the task runtime after an interrupted process, while the audit events remain
 available for diagnosis.
 
+### Remote computer bridge
+
+The CLI now has a durable local computer target registry. It is the foundation
+for controlling a running Vcode on a computer from the phone/cloud client:
+
+```sh
+vcode bridge status
+vcode bridge project add --name my-project --path C:\\Projects\\my-project
+vcode bridge project list
+vcode bridge pair
+vcode bridge start
+```
+
+Bridge state is stored under the platform configuration directory and is
+written atomically. A project must be explicitly registered before a remote
+client can use it; arbitrary phone-supplied paths are not accepted. The cloud
+target is exposed through `GET /api/targets`, and the same target model will be
+used for the computer relay in the next bridge transport phase.
+
 ## Development
 
 ```sh
@@ -217,3 +236,4 @@ go build ./cmd/vcode
 ```
 
 Vcode is released under the MIT License. See [LICENSE](./LICENSE).
+> 自进化功能说明：见 [docs/EVOLUTION_GUIDE.zh-CN.md](docs/EVOLUTION_GUIDE.zh-CN.md)。它默认关闭，只通过显式 `vcode evolve` 运行。

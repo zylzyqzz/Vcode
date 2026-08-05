@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -3687,6 +3688,9 @@ func (m *chatTUI) runSlashCommand(input string) tea.Cmd {
 		// Native scrollback keeps the old transcript; mark the fork with a fresh banner.
 		m.resetFreshContextView(false)
 		m.notice(i18n.M.SlashNewDone)
+	case "/连接", "/connect":
+		m.echoLocalCommand(input)
+		m.runBridgePairCommand()
 	case "/clear":
 		m.echoLocalCommand(input)
 		m.clearConfirm = &clearConfirm{confirm: 1}
@@ -4181,6 +4185,22 @@ func (m *chatTUI) showMCPStatus() {
 }
 
 // notice queues a dim informational line to scrollback.
+// runBridgePairCommand creates a short-lived phone pairing challenge. The
+// existing bridge token configuration remains untouched and is still used by
+// the background Bridge to authenticate to the relay.
+func (m *chatTUI) runBridgePairCommand() {
+	cmd := exec.Command(os.Args[0], "bridge", "pair")
+	out, err := cmd.CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil && text == "" {
+		text = "连接失败：" + err.Error()
+	}
+	if text == "" {
+		text = "连接码未生成"
+	}
+	m.commitLine(text)
+}
+
 func (m *chatTUI) notice(note string) {
 	m.commitLine(dim("  · " + note))
 }

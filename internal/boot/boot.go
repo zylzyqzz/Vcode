@@ -27,6 +27,7 @@ import (
 	"vcode/internal/control"
 	"vcode/internal/environment"
 	"vcode/internal/event"
+	"vcode/internal/evolution"
 	"vcode/internal/guardian"
 	"vcode/internal/history"
 	"vcode/internal/hook"
@@ -285,6 +286,11 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	mem := memory.Load(memory.Options{CWD: root, UserDir: config.MemoryUserDir()})
 	projectChecks := instruction.ExtractHostChecks(mem.Docs)
 	sysPrompt = memory.Compose(sysPrompt, mem)
+	if overlay, err := evolution.LoadOverlay(root, "build"); err != nil {
+		return nil, err
+	} else if strings.TrimSpace(overlay) != "" {
+		sysPrompt += "\n\n" + overlay
+	}
 
 	// Skills: discover playbooks (built-in + project/custom/global) and fold their
 	// one-liner index into the same cache-stable prefix — names + descriptions

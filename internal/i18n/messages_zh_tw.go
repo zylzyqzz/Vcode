@@ -360,6 +360,7 @@ var ChineseTraditional = Messages{
   vcode task plan|approve|run|resume|retry <id>       規劃、批准、執行或恢復任務
   vcode task pause|cancel <id> [node-id]              暫停或取消任務執行
   vcode task merge <id> [node-id]                     整合 worktree 中已提交的修改
+  vcode evolve init|run|status|history|rollback       管理可控的 Build Agent 自進化
   vcode version
   vcode help
 

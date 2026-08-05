@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -95,18 +94,9 @@ func configuredModelRefs(cfg *config.Config) []string {
 		return nil
 	}
 	var refs []string
-	activeProvider := strings.TrimSpace(strings.SplitN(cfg.DefaultModel, "/", 2)[0])
-	hideOfficial := activeProvider != "" && activeProvider != "deepseek-flash" && activeProvider != "deepseek-pro"
 	for i := range cfg.Providers {
 		p := &cfg.Providers[i]
 		if !p.Configured() {
-			continue
-		}
-		// A custom DeepSeek gateway may intentionally reuse the legacy
-		// DEEPSEEK_API_KEY variable. Once that gateway is active, do not show
-		// the official entries as competing choices merely because the shared
-		// variable exists; they are a different platform, not another model.
-		if hideOfficial && (p.Name == "deepseek-flash" || p.Name == "deepseek-pro") {
 			continue
 		}
 		for _, model := range p.ChatModelList() {

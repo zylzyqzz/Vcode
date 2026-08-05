@@ -1,0 +1,4 @@
+#Tue Aug 04 22:57:27 PDT 2026
+base.0=C\:\\Users\\Administrator\\Documents\\Codex\\2026-08-01\\new-chat\\work\\Vcode\\android\\app\\build\\intermediates\\dex\\release\\mergeDexRelease\\classes.dex
+renamed.0=classes.dex
+path.0=classes.dex

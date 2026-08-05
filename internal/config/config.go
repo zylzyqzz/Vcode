@@ -653,6 +653,10 @@ type ServeConfig struct {
 	// rate-limiting and Secure-cookie decisions. When false (default), they
 	// are ignored — an attacker can otherwise forge them.
 	BehindProxy bool `toml:"behind_proxy"`
+	// BridgeToken authenticates an outbound computer Bridge WebSocket. Keep it
+	// separate from the browser login credential; it is never exposed to the
+	// model or returned by the API.
+	BridgeToken string `toml:"bridge_token"`
 }
 
 // NetworkConfig controls ordinary outbound HTTP traffic such as model providers,

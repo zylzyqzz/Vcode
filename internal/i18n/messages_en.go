@@ -398,7 +398,10 @@ Usage:
   vcode task plan|approve|run|resume|retry <id>       plan, approve, execute, or recover a task
   vcode task pause|cancel <id> [node-id]              pause or cancel task execution
   vcode task merge <id> [node-id]                     integrate committed worktree changes
+  vcode evolve init|run|status|history|rollback       manage controlled Build Agent evolution
   vcode serve [--model NAME] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  serve over HTTP+SSE (with optional auth)
+  vcode bridge start|stop|status|pair                         control the local computer Bridge
+  vcode bridge project add|list|remove                         manage phone-accessible local projects
   vcode acp [--model NAME]                           serve Agent Client Protocol over stdio (also: vcode --acp)
   vcode setup [path]                                 interactive config wizard; writes vcode.toml (+ .env)
   vcode config auto-plan [off|on]                    configure automatic plan mode

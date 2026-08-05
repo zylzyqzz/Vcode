@@ -92,6 +92,9 @@ func Run(args []string, version string) int {
 		return runInteractiveSession(rest)
 	case "serve":
 		return runServe(rest)
+	case "bridge":
+		configureCLIThemeFromConfigNoProbe()
+		return bridgeCommand(rest)
 	case "setup":
 		configureCLIThemeFromConfigForTTYOutput()
 		return setupConfig(rest)
@@ -137,6 +140,9 @@ func Run(args []string, version string) int {
 	case "bot":
 		configureCLIThemeFromConfigNoProbe()
 		return botCommand(rest, version)
+	case "evolve":
+		configureCLIThemeFromConfigNoProbe()
+		return evolveCommand(rest)
 	case "upgrade", "update":
 		configureCLIThemeFromConfigNoProbe()
 		return upgradeCommand(rest, version)
@@ -166,7 +172,7 @@ func isDefaultInteractiveFlag(arg string) bool {
 
 func shouldMigrateLegacyConfigForCLI(cmd string) bool {
 	switch cmd {
-	case "", "run", "chat", "code", "serve", "setup", "config", "init", "acp", "mcp", "compat", "skill", "agent", "plugin", "doctor", "review", "task", "bot", "upgrade", "update":
+	case "", "run", "chat", "code", "serve", "bridge", "setup", "config", "init", "acp", "mcp", "compat", "skill", "agent", "plugin", "doctor", "review", "task", "bot", "evolve", "upgrade", "update":
 		return true
 	default:
 		return false
@@ -480,6 +486,7 @@ func runServe(args []string) int {
 	password := fs.String("password", "", "password for auth=password (use --hash-password to store a hash instead)")
 	hashPassword := fs.Bool("hash-password", false, "print a bcrypt hash of --password and exit")
 	behindProxy := fs.Bool("behind-proxy", false, "trust X-Forwarded-For / X-Forwarded-Proto headers from a reverse proxy")
+	bridgeToken := fs.String("bridge-token", "", "token for computer Bridge WebSocket connections")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -513,6 +520,9 @@ func runServe(args []string) int {
 	}
 	if *behindProxy {
 		serveCfg.BehindProxy = true
+	}
+	if *bridgeToken != "" {
+		serveCfg.BridgeToken = *bridgeToken
 	}
 	mode, err := serve.NormalizeAuthMode(serveCfg.AuthMode)
 	if err != nil {

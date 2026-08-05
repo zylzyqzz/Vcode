@@ -1,0 +1,13 @@
+{
+  "name": "Vcode Mobile Terminal",
+  "short_name": "Vcode",
+  "description": "Vcode 云端编程终端",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0d0f",
+  "theme_color": "#c89428",
+  "orientation": "any",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

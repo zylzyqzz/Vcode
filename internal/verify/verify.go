@@ -91,6 +91,24 @@ func Plan(root string) []Check {
 // Run executes the discovered checks in order and never hides a failed check.
 func Run(ctx context.Context, root string) Result {
 	checks := Plan(root)
+	return RunChecks(ctx, root, checks)
+}
+
+// RunCommands executes an explicit verification plan supplied by a benchmark.
+// It preserves the same evidence and failure semantics as automatic project
+// verification while allowing evolution cases to define their own checks.
+func RunCommands(ctx context.Context, root string, commands []string) Result {
+	checks := make([]Check, 0, len(commands))
+	for _, command := range commands {
+		command = strings.TrimSpace(command)
+		if command != "" {
+			checks = append(checks, Check{Name: command, Command: command})
+		}
+	}
+	return RunChecks(ctx, root, checks)
+}
+
+func RunChecks(ctx context.Context, root string, checks []Check) Result {
 	result := Result{Checks: checks}
 	if len(checks) == 0 {
 		result.Status = Unverified

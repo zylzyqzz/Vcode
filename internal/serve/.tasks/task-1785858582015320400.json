@@ -1,0 +1,13 @@
+{
+  "id": "task-1785858582015320400",
+  "goal": "hi",
+  "mode": "build",
+  "agent": "Builder",
+  "status": "completed",
+  "retry_count": 0,
+  "tool_calls": 0,
+  "last_event": 1,
+  "created_at": "2026-08-04T15:49:42.0153204Z",
+  "updated_at": "2026-08-04T15:49:42.0231001Z",
+  "finished_at": "2026-08-04T15:49:42.0231001Z"
+}

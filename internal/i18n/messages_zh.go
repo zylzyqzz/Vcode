@@ -412,6 +412,7 @@ var Chinese = Messages{
   vcode task plan|approve|run|resume|retry <id>       规划、批准、执行或恢复任务
   vcode task pause|cancel <id> [node-id]              暂停或取消任务执行
   vcode task merge <id> [node-id]                     集成 worktree 中已提交的改动
+  vcode evolve init|run|status|history|rollback       管理可控的 Build Agent 自进化
   vcode version
   vcode help
 

@@ -35,6 +35,12 @@ func vcodeHomeDir() string {
 	if dir := cleanEnvDir("VCODE_HOME"); dir != "" {
 		return dir
 	}
+	// Respect XDG_CONFIG_HOME when explicitly provided, including on Windows.
+	// This keeps portable/test environments isolated from the host AppData tree
+	// and is useful for users who keep CLI state on a shared configuration path.
+	if dir := cleanEnvDir("XDG_CONFIG_HOME"); dir != "" {
+		return filepath.Join(dir, "vcode")
+	}
 	if runtimeGOOS == "windows" {
 		if dir := osUserConfigDir(); dir != "" {
 			return filepath.Join(dir, "vcode")
@@ -135,6 +141,12 @@ func userSupportDir() string {
 }
 
 func legacyOSSupportDir() string {
+	// An explicit portable state root is authoritative. Do not fall back to the
+	// host AppData directory, otherwise isolated CLI runs can silently inherit
+	// another installation's language, model, or credentials configuration.
+	if cleanEnvDir("VCODE_HOME") != "" || cleanEnvDir("XDG_CONFIG_HOME") != "" {
+		return ""
+	}
 	dir := osUserConfigDir()
 	if dir == "" {
 		return ""

@@ -58,6 +58,13 @@ func SaveAttachmentBytesInRoot(root, origName string, raw []byte) (string, error
 }
 
 func SaveImageDataURL(dataURL string) (string, error) {
+	return SaveImageDataURLInRoot(".", dataURL)
+}
+
+// SaveImageDataURLInRoot stores a pasted image below root/.vcode/attachments.
+// It is used by authenticated HTTP frontends that operate on a project
+// workspace rather than the process working directory.
+func SaveImageDataURLInRoot(root, dataURL string) (string, error) {
 	const prefix = "data:"
 	const marker = ";base64,"
 	if !strings.HasPrefix(dataURL, prefix) {
@@ -72,7 +79,7 @@ func SaveImageDataURL(dataURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decode pasted image: %w", err)
 	}
-	return SaveImageBytes(mime, raw)
+	return SaveImageBytesInRoot(root, mime, raw)
 }
 
 func SaveImageBytes(declaredMime string, raw []byte) (string, error) {
