@@ -234,7 +234,7 @@ func runTaskGraph(store *taskgraph.Store, id string, noVerify bool) int {
 	}
 	if task.Outcome != "VERIFIED" {
 		fmt.Printf("task %s finished with outcome=%s; verification evidence is incomplete\n", id, task.Outcome)
-		return 0
+		return 1
 	}
 	fmt.Printf("task %s completed outcome=VERIFIED\n", id)
 	return 0
