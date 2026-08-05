@@ -112,6 +112,63 @@ func (s *Store) Load(id string) (Task, error) {
 	return s.loadLocked(id)
 }
 
+// List returns every durable task without selecting an "active" task. The
+// caller can choose which task to resume; persistence never silently switches
+// another task's state.
+func (s *Store) List() ([]Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := os.ReadDir(s.root)
+	if err != nil {
+		return nil, err
+	}
+	var tasks []Task
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.TrimSpace(entry.Name()) == "" {
+			continue
+		}
+		task, err := s.loadLocked(entry.Name())
+		if err == nil {
+			tasks = append(tasks, task)
+		}
+	}
+	return tasks, nil
+}
+
+// MarkNodeSuccess records an idempotent node boundary. Replaying a node that
+// already succeeded is a no-op, which is the key property needed after a
+// process or network restart.
+func (s *Store) MarkNodeSuccess(id, node, agent string) (Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(node) == "" {
+		return Task{}, errors.New("node id is required")
+	}
+	task, err := s.loadLocked(id)
+	if err != nil {
+		return Task{}, err
+	}
+	if task.LastSuccessfulNode == node {
+		return task, nil
+	}
+	if terminal(task.Status) {
+		return Task{}, fmt.Errorf("cannot complete node on terminal task %q", id)
+	}
+	task.CurrentNode = node
+	task.LastSuccessfulNode = node
+	if strings.TrimSpace(agent) != "" {
+		task.CurrentAgent = agent
+	}
+	task.UpdatedAt = time.Now().UTC()
+	if _, err := s.appendEventLocked(&task, "node_completed", map[string]string{"node": node, "agent": agent}); err != nil {
+		return Task{}, err
+	}
+	if err := writeJSONAtomic(s.snapshotPath(id), task); err != nil {
+		return Task{}, err
+	}
+	return task, nil
+}
+
 func (s *Store) Transition(id string, next TaskStatus, outcome, reason string) (Task, Event, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

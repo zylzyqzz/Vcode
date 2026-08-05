@@ -89,3 +89,25 @@ func TestCompletionGateAllowsOnlyCompleteEvidence(t *testing.T) {
 		t.Fatalf("decision = %+v", decision)
 	}
 }
+
+func TestStoreListsTasksAndNodeCompletionIsIdempotent(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := store.Create(Task{Goal: "first", Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.MarkNodeSuccess(created.ID, "builder-1", "Builder"); err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := store.MarkNodeSuccess(created.ID, "builder-1", "Builder")
+	if err != nil || replayed.LastEventSeq != 1 {
+		t.Fatalf("replayed node = %+v, err=%v", replayed, err)
+	}
+	tasks, err := store.List()
+	if err != nil || len(tasks) != 1 || tasks[0].LastSuccessfulNode != "builder-1" {
+		t.Fatalf("tasks = %+v, err=%v", tasks, err)
+	}
+}
