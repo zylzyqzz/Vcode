@@ -2,6 +2,7 @@
 /bin/
 /dist/
 /stage/
+/.stage/
 /npm/.stage/
 /vcode
 /vcode.exe
