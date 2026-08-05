@@ -34,6 +34,7 @@ import (
 	"vcode/internal/provider/openai"
 	"vcode/internal/serve"
 	"vcode/internal/verify"
+	"vcode/internal/worktree"
 
 	tea "charm.land/bubbletea/v2"
 	"golang.org/x/term"
@@ -460,6 +461,18 @@ func runAgent(args []string) int {
 		if len(verification.Failed) > 0 {
 			return 1
 		}
+		changed, diffErr := (&worktree.Manager{}).ChangedFilesAt(ctx, mustCurrentDir())
+		if diffErr != nil {
+			fmt.Fprintf(os.Stderr, "  failed  completion gate: cannot inspect changed files: %v\n", diffErr)
+			return 1
+		}
+		if len(changed) == 0 {
+			fmt.Fprintln(os.Stderr, "  failed  completion gate: no files changed")
+			return 1
+		}
+	} else {
+		fmt.Fprintln(os.Stderr, "\nverification: UNVERIFIED (explicitly skipped with --no-verify)")
+		return 1
 	}
 	return 0
 }
