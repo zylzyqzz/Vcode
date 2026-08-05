@@ -17,19 +17,6 @@ const (
 	TargetBusy    = "busy"
 )
 
-const (
-	TaskQueued            = "queued"
-	TaskRunning           = "running"
-	TaskWaitingPermission = "waiting_permission"
-	TaskVerifying         = "verifying"
-	TaskPaused            = "paused"
-	TaskCompleted         = "completed"
-	TaskPartial           = "partial"
-	TaskFailed            = "failed"
-	TaskBlocked           = "blocked"
-	TaskCancelled         = "cancelled"
-)
-
 type RuntimeTarget struct {
 	ID        string    `json:"id"`
 	Kind      string    `json:"kind"`
