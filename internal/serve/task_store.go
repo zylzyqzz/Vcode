@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"vcode/internal/runtime"
 )
 
 type TaskStatus string
@@ -35,6 +37,7 @@ type TaskRecord struct {
 	SessionID          string     `json:"session_id,omitempty"`
 	Agent              string     `json:"agent,omitempty"`
 	Status             TaskStatus `json:"status"`
+	Outcome            string     `json:"outcome,omitempty"`
 	ErrorClass         string     `json:"error_class,omitempty"`
 	Error              string     `json:"error,omitempty"`
 	RetryCount         int        `json:"retry_count"`
@@ -42,6 +45,14 @@ type TaskRecord struct {
 	ToolFailures       int        `json:"tool_failures,omitempty"`
 	ModifiedFiles      []string   `json:"modified_files,omitempty"`
 	VerificationStatus string     `json:"verification_status,omitempty"`
+	FinalResponse      string     `json:"final_response,omitempty"`
+	WritesCompleted    bool       `json:"writes_completed"`
+	VerificationFresh  bool       `json:"verification_fresh"`
+	EvidenceRecorded   bool       `json:"evidence_recorded"`
+	DiffMatchesGoal    bool       `json:"diff_matches_goal"`
+	BoundaryViolations int        `json:"boundary_violations,omitempty"`
+	LastWriteAt        *time.Time `json:"last_write_at,omitempty"`
+	LastVerificationAt *time.Time `json:"last_verification_at,omitempty"`
 	LastEvent          uint64     `json:"last_event"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
@@ -247,12 +258,139 @@ func (s *taskStore) setVerification(id, status string) error {
 		return err
 	}
 	record.VerificationStatus = status
+	now := time.Now().UTC()
+	record.LastVerificationAt = &now
+	record.EvidenceRecorded = strings.TrimSpace(status) != ""
+	record.VerificationFresh = strings.EqualFold(strings.TrimSpace(status), "VERIFIED") &&
+		(record.LastWriteAt == nil || !record.LastWriteAt.After(now))
+	record.DiffMatchesGoal = len(record.ModifiedFiles) > 0
 	record.UpdatedAt = time.Now().UTC()
 	if s.active != nil && s.active.ID == id {
 		copy := *record
 		s.active = &copy
 	}
 	return s.writeRecordLocked(*record)
+}
+
+// markToolStart records write intent before the tool runs. This gives the
+// completion gate enough information to reject a successful-looking answer
+// when no write ever happened, while keeping the raw tool event authoritative.
+func (s *taskStore) markToolStart(id string, readOnly bool, args string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.recordLocked(id)
+	if err != nil {
+		return err
+	}
+	if !readOnly {
+		record.WritesCompleted = true
+		now := time.Now().UTC()
+		record.LastWriteAt = &now
+		for _, path := range toolPaths(args) {
+			if path == "" || contains(record.ModifiedFiles, path) {
+				continue
+			}
+			record.ModifiedFiles = append(record.ModifiedFiles, path)
+		}
+	}
+	record.UpdatedAt = time.Now().UTC()
+	if s.active != nil && s.active.ID == id {
+		copy := *record
+		s.active = &copy
+	}
+	return s.writeRecordLocked(*record)
+}
+
+func (s *taskStore) setFinalResponse(id, response string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.recordLocked(id)
+	if err != nil {
+		return err
+	}
+	record.FinalResponse = strings.TrimSpace(response)
+	record.UpdatedAt = time.Now().UTC()
+	if s.active != nil && s.active.ID == id {
+		copy := *record
+		s.active = &copy
+	}
+	return s.writeRecordLocked(*record)
+}
+
+// complete is the only production path that may promote a task to completed.
+// The legacy update method remains for backwards-compatible state migrations
+// and tests, but event consumers must call this gate.
+func (s *taskStore) complete(id string) (runtime.CompletionDecision, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.recordLocked(id)
+	if err != nil {
+		return runtime.CompletionDecision{}, err
+	}
+	record.DiffMatchesGoal = record.DiffMatchesGoal && len(record.ModifiedFiles) > 0
+	decision := runtime.EvaluateCompletion(runtime.CompletionInput{
+		FinalResponse:      record.FinalResponse,
+		ChangedFiles:       record.ModifiedFiles,
+		VerificationStatus: record.VerificationStatus,
+		VerificationFresh:  record.VerificationFresh,
+		UnresolvedFailures: record.ToolFailures,
+		BoundaryViolations: record.BoundaryViolations,
+		DiffMatchesGoal:    record.DiffMatchesGoal,
+		EvidenceRecorded:   record.EvidenceRecorded,
+		WritesCompleted:    record.WritesCompleted,
+	})
+	record.Status = TaskPartial
+	record.Outcome = decision.Outcome
+	if !decision.Allowed {
+		record.ErrorClass = "completion_gate"
+		record.Error = strings.Join(decision.Reasons, "; ")
+	}
+	record.UpdatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	record.FinishedAt = &now
+	if decision.Allowed {
+		record.Status = TaskCompleted
+		record.ErrorClass = ""
+		record.Error = ""
+	}
+	if s.active != nil && s.active.ID == id {
+		copy := *record
+		s.active = &copy
+	}
+	if err := s.writeRecordLocked(*record); err != nil {
+		return runtime.CompletionDecision{}, err
+	}
+	return decision, nil
+}
+
+func toolPaths(args string) []string {
+	var raw map[string]any
+	if json.Unmarshal([]byte(args), &raw) != nil {
+		return nil
+	}
+	var paths []string
+	for _, key := range []string{"path", "file", "filename"} {
+		if value, ok := raw[key].(string); ok && strings.TrimSpace(value) != "" {
+			paths = append(paths, value)
+		}
+	}
+	if values, ok := raw["paths"].([]any); ok {
+		for _, value := range values {
+			if path, ok := value.(string); ok && strings.TrimSpace(path) != "" {
+				paths = append(paths, path)
+			}
+		}
+	}
+	return paths
+}
+
+func contains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *taskStore) appendEvent(id string, payload []byte) (uint64, error) {

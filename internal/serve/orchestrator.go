@@ -95,7 +95,15 @@ func (s *Server) runPipeline(id, goal string) {
 }
 
 func (s *Server) finishPipeline(id string, status TaskStatus, class, message string) {
-	_ = s.tasks.update(id, status, class, message)
+	if status == TaskCompleted {
+		if decision, err := s.tasks.complete(id); err != nil {
+			_ = s.tasks.update(id, TaskPartial, "completion_gate", err.Error())
+		} else if !decision.Allowed {
+			_ = s.tasks.audit(id, "completion_rejected", map[string]string{"reasons": strings.Join(decision.Reasons, "; ")})
+		}
+	} else {
+		_ = s.tasks.update(id, status, class, message)
+	}
 	s.endPipeline(id)
 	s.bc.SetActiveTask("")
 	s.finishTask(id)

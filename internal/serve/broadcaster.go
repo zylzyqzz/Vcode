@@ -98,12 +98,16 @@ func (b *Broadcaster) Emit(e event.Event) {
 				agent = "Explorer"
 			}
 			_ = b.journal.setAgent(b.activeID, agent, status)
+		case event.Message:
+			_ = b.journal.setFinalResponse(b.activeID, e.Text)
+		case event.ToolDispatch:
+			_ = b.journal.markToolStart(b.activeID, e.Tool.ReadOnly, e.Tool.Args)
 		case event.TurnDone:
 			if b.pipelineActive == nil || !b.pipelineActive(b.activeID) {
 				if e.Err != nil {
 					_ = b.journal.update(b.activeID, TaskFailed, "unknown", e.Err.Error())
 				} else {
-					_ = b.journal.update(b.activeID, TaskCompleted, "", "")
+					_, _ = b.journal.complete(b.activeID)
 				}
 				id := b.activeID
 				b.activeID = ""
