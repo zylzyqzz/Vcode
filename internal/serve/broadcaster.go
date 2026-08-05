@@ -107,7 +107,9 @@ func (b *Broadcaster) Emit(e event.Event) {
 				if e.Err != nil {
 					_ = b.journal.update(b.activeID, TaskFailed, "unknown", e.Err.Error())
 				} else {
-					_, _ = b.journal.complete(b.activeID)
+					// Verification and the completion gate run from the server's
+					// done callback. Do not promote a task from a model event alone.
+					_ = b.journal.update(b.activeID, TaskVerifying, "", "verification pending")
 				}
 				id := b.activeID
 				b.activeID = ""

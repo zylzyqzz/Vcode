@@ -30,6 +30,7 @@ import (
 	"vcode/internal/jobs"
 	"vcode/internal/nilutil"
 	"vcode/internal/provider"
+	"vcode/internal/verify"
 )
 
 //go:embed index.html
@@ -633,6 +634,18 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) finishTask(id string) {
+	// A model TurnDone is not completion evidence. Run the project's verifier
+	// after the final write, then let the hard completion gate decide whether
+	// this task is VERIFIED or only PARTIAL/UNVERIFIED.
+	if record, err := s.tasks.record(id); err == nil && record.Status == TaskVerifying {
+		result := verify.Run(context.Background(), record.Workspace)
+		_ = s.tasks.setVerification(id, string(result.Status))
+		if result.Status == verify.Verified {
+			_, _ = s.tasks.complete(id)
+		} else {
+			_ = s.tasks.update(id, TaskPartial, "verification_failed", result.Error())
+		}
+	}
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()
 	if s.workspaceLock != nil && s.workspaceLock.ID == id {

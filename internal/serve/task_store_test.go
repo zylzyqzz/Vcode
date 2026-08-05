@@ -145,3 +145,54 @@ func TestTaskStoreUpdatesNonActiveTaskByID(t *testing.T) {
 		t.Fatalf("active task was unexpectedly replaced: %+v", current)
 	}
 }
+
+func TestTaskStoreCompletionGateRejectsModelOnlyCompletion(t *testing.T) {
+	s := newTaskStore(t.TempDir())
+	if _, err := s.start("task-gate", "change code", "build", "deepseek", t.TempDir(), "session.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.setFinalResponse("task-gate", "done"); err != nil {
+		t.Fatal(err)
+	}
+	decision, err := s.complete("task-gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Allowed {
+		t.Fatal("completion gate accepted a model-only completion")
+	}
+	record, err := s.record("task-gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Status != TaskPartial || record.ErrorClass != "completion_gate" {
+		t.Fatalf("record = %+v", record)
+	}
+}
+
+func TestTaskStoreCompletionGateRequiresFreshVerification(t *testing.T) {
+	s := newTaskStore(t.TempDir())
+	if _, err := s.start("task-gate-ok", "change code", "build", "deepseek", t.TempDir(), "session.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.markToolStart("task-gate-ok", false, `{"path":"main.go"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.setFinalResponse("task-gate-ok", "implemented"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.setVerification("task-gate-ok", "VERIFIED"); err != nil {
+		t.Fatal(err)
+	}
+	decision, err := s.complete("task-gate-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decision.Allowed {
+		t.Fatalf("decision = %+v", decision)
+	}
+	record, err := s.record("task-gate-ok")
+	if err != nil || record.Status != TaskCompleted {
+		t.Fatalf("record = %+v, err=%v", record, err)
+	}
+}
