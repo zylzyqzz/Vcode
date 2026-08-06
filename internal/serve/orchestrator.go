@@ -80,11 +80,6 @@ func (s *Server) runPipeline(id, goal string) {
 		result = verify.Run(ctx, ctrl.WorkspaceRoot())
 		_ = s.tasks.setVerification(id, string(result.Status))
 	}
-	if false && result.Status != verify.Verified {
-		_ = runStage("Debugger", "验证没有完全通过。请根据验证失败证据定位根因并修复，只修改必要文件。完成后说明修复内容。\n\n失败证据："+result.Error(), false)
-		result = verify.Run(ctx, ctrl.WorkspaceRoot())
-		_ = s.tasks.setVerification(id, string(result.Status))
-	}
 	if result.Status != verify.Verified {
 		s.finishPipeline(id, TaskPartial, "verification_failed", result.Error())
 		return
