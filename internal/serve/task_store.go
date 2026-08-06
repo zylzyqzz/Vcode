@@ -44,6 +44,7 @@ type TaskRecord struct {
 	RetryCount         int        `json:"retry_count"`
 	ToolCalls          int        `json:"tool_calls"`
 	ToolFailures       int        `json:"tool_failures,omitempty"`
+	UnresolvedFailures int        `json:"unresolved_failures,omitempty"`
 	ModifiedFiles      []string   `json:"modified_files,omitempty"`
 	VerificationStatus string     `json:"verification_status,omitempty"`
 	FinalResponse      string     `json:"final_response,omitempty"`
@@ -231,6 +232,7 @@ func (s *taskStore) toolResult(id string, failed bool) error {
 	record.ToolCalls++
 	if failed {
 		record.ToolFailures++
+		record.UnresolvedFailures++
 	}
 	record.UpdatedAt = time.Now().UTC()
 	if s.active != nil && s.active.ID == id {
@@ -274,6 +276,12 @@ func (s *taskStore) setVerification(id, status string) error {
 	record.EvidenceRecorded = strings.TrimSpace(status) != ""
 	record.VerificationFresh = strings.EqualFold(strings.TrimSpace(status), "VERIFIED") &&
 		(record.LastWriteAt == nil || !record.LastWriteAt.After(now))
+	if record.VerificationFresh {
+		// A successful verification after the last write is the evidence that
+		// recovery handled failures from the previous attempt. Keep the total
+		// failure count for audit, but do not block completion on resolved work.
+		record.UnresolvedFailures = 0
+	}
 	record.DiffMatchesGoal = len(record.ModifiedFiles) > 0
 	record.UpdatedAt = time.Now().UTC()
 	if s.active != nil && s.active.ID == id {
@@ -361,7 +369,7 @@ func (s *taskStore) complete(id string) (runtime.CompletionDecision, error) {
 		ChangedFiles:       record.ModifiedFiles,
 		VerificationStatus: record.VerificationStatus,
 		VerificationFresh:  record.VerificationFresh,
-		UnresolvedFailures: record.ToolFailures,
+		UnresolvedFailures: record.UnresolvedFailures,
 		BoundaryViolations: record.BoundaryViolations,
 		DiffMatchesGoal:    record.DiffMatchesGoal,
 		EvidenceRecorded:   record.EvidenceRecorded,

@@ -250,3 +250,36 @@ func TestTaskStoreCompletionGateRequiresFreshVerification(t *testing.T) {
 		t.Fatalf("record = %+v, err=%v", record, err)
 	}
 }
+
+func TestTaskStoreSuccessfulRecoveryClearsOnlyUnresolvedFailures(t *testing.T) {
+	s := newTaskStore(t.TempDir())
+	if _, err := s.start("task-recovered", "recover code", "build", "deepseek", t.TempDir(), "session.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.toolResult("task-recovered", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.markToolStart("task-recovered", false, `{"path":"main.go"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.setFinalResponse("task-recovered", "fixed and verified"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.setVerification("task-recovered", "VERIFIED"); err != nil {
+		t.Fatal(err)
+	}
+	decision, err := s.complete("task-recovered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decision.Allowed {
+		t.Fatalf("decision = %+v", decision)
+	}
+	record, err := s.record("task-recovered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Status != TaskCompleted || record.ToolFailures != 1 || record.UnresolvedFailures != 0 {
+		t.Fatalf("recovery counters = %+v", record)
+	}
+}
