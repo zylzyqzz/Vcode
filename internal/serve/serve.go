@@ -31,6 +31,7 @@ import (
 	"vcode/internal/nilutil"
 	"vcode/internal/provider"
 	"vcode/internal/verify"
+	"vcode/internal/worktree"
 )
 
 //go:embed index.html
@@ -638,6 +639,7 @@ func (s *Server) finishTask(id string) {
 	// after the final write, then let the hard completion gate decide whether
 	// this task is VERIFIED or only PARTIAL/UNVERIFIED.
 	if record, err := s.tasks.record(id); err == nil && record.Status == TaskVerifying {
+		_ = s.refreshTaskChanges(id, record.Workspace)
 		result := verify.Run(context.Background(), record.Workspace)
 		_ = s.tasks.setVerification(id, string(result.Status))
 		if result.Status == verify.Verified {
@@ -654,6 +656,14 @@ func (s *Server) finishTask(id string) {
 		}
 		s.workspaceLock = nil
 	}
+}
+
+func (s *Server) refreshTaskChanges(id, workspace string) error {
+	changed, err := (&worktree.Manager{}).ChangedFilesAt(context.Background(), workspace)
+	if err != nil {
+		return err
+	}
+	return s.tasks.setModifiedFiles(id, changed)
 }
 
 func (s *Server) resumeDurableTask() {

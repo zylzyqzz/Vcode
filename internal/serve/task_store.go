@@ -318,6 +318,23 @@ func (s *taskStore) setFinalResponse(id, response string) error {
 	return s.writeRecordLocked(*record)
 }
 
+func (s *taskStore) setModifiedFiles(id string, files []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.recordLocked(id)
+	if err != nil {
+		return err
+	}
+	record.ModifiedFiles = append([]string(nil), files...)
+	record.DiffMatchesGoal = len(record.ModifiedFiles) > 0
+	record.UpdatedAt = time.Now().UTC()
+	if s.active != nil && s.active.ID == id {
+		copy := *record
+		s.active = &copy
+	}
+	return s.writeRecordLocked(*record)
+}
+
 // complete is the only production path that may promote a task to completed.
 // The legacy update method remains for backwards-compatible state migrations
 // and tests, but event consumers must call this gate.

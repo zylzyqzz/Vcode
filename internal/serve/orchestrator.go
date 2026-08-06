@@ -106,6 +106,9 @@ func (s *Server) runPipeline(id, goal string) {
 
 func (s *Server) finishPipeline(id string, status TaskStatus, class, message string) {
 	if status == TaskCompleted {
+		if record, err := s.tasks.record(id); err == nil {
+			_ = s.refreshTaskChanges(id, record.Workspace)
+		}
 		if decision, err := s.tasks.complete(id); err != nil {
 			_ = s.tasks.update(id, TaskPartial, "completion_gate", err.Error())
 		} else if !decision.Allowed {
