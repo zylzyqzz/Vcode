@@ -71,6 +71,50 @@ func TestStoreRejectsInvalidTransitionsAndTerminalReopen(t *testing.T) {
 	}
 }
 
+func TestStoreCompletionUsesEvidenceGate(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected, err := store.Create(Task{Goal: "reject fake completion", Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Transition(rejected.ID, TaskRunning, "", "start"); err != nil {
+		t.Fatal(err)
+	}
+	partial, decision, event, err := store.Complete(rejected.ID, CompletionInput{FinalResponse: "done"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Allowed || partial.Status != TaskPartial || event.Type != "task_partial" {
+		t.Fatalf("fake completion = task:%+v decision:%+v event:%+v", partial, decision, event)
+	}
+
+	accepted, err := store.Create(Task{Goal: "accept verified completion", Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Transition(accepted.ID, TaskRunning, "", "start"); err != nil {
+		t.Fatal(err)
+	}
+	completed, decision, event, err := store.Complete(accepted.ID, CompletionInput{
+		FinalResponse:      "implemented",
+		ChangedFiles:       []string{"main.go"},
+		VerificationStatus: "VERIFIED",
+		VerificationFresh:  true,
+		WritesCompleted:    true,
+		DiffMatchesGoal:    true,
+		EvidenceRecorded:   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decision.Allowed || completed.Status != TaskCompleted || event.Type != "task_completed" {
+		t.Fatalf("verified completion = task:%+v decision:%+v event:%+v", completed, decision, event)
+	}
+}
+
 func TestCompletionGateRejectsClaimsWithoutEvidence(t *testing.T) {
 	decision := EvaluateCompletion(CompletionInput{
 		FinalResponse:      "done",

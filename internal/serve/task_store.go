@@ -201,6 +201,9 @@ func (s *taskStore) start(id, goal, mode, model, workspace, sessionID string) (T
 func (s *taskStore) update(id string, status TaskStatus, errClass, message string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if status == TaskCompleted {
+		return fmt.Errorf("completed status requires the completion gate")
+	}
 	record, err := s.recordLocked(id)
 	if err != nil {
 		return err
@@ -385,14 +388,17 @@ func (s *taskStore) setModifiedFiles(id string, files []string) error {
 }
 
 // complete is the only production path that may promote a task to completed.
-// The legacy update method remains for backwards-compatible state migrations
-// and tests, but event consumers must call this gate.
+// The legacy update method remains for backwards-compatible state migrations,
+// but explicitly rejects the completed status so it cannot bypass this gate.
 func (s *taskStore) complete(id string) (runtime.CompletionDecision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, err := s.recordLocked(id)
 	if err != nil {
 		return runtime.CompletionDecision{}, err
+	}
+	if terminalTaskStatus(record.Status) {
+		return runtime.CompletionDecision{}, fmt.Errorf("task %q is already terminal", id)
 	}
 	record.DiffMatchesGoal = record.DiffMatchesGoal && len(record.ModifiedFiles) > 0
 	decision := runtime.EvaluateCompletion(runtime.CompletionInput{

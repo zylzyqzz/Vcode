@@ -179,6 +179,9 @@ func (s *Store) Transition(id string, next TaskStatus, outcome, reason string) (
 	if !validTransition(task.Status, next) {
 		return Task{}, Event{}, fmt.Errorf("invalid task transition %s -> %s", task.Status, next)
 	}
+	if next == TaskCompleted {
+		return Task{}, Event{}, errors.New("completed status requires the completion gate")
+	}
 	task.Status = next
 	if outcome != "" {
 		task.Outcome = outcome
@@ -201,6 +204,50 @@ func (s *Store) Transition(id string, next TaskStatus, outcome, reason string) (
 		return Task{}, Event{}, err
 	}
 	return task, e, nil
+}
+
+// Complete is the only runtime API that can promote a task to completed. The
+// caller must provide the host-collected evidence; model text alone is never
+// enough. A rejected completion is persisted as partial so the task remains
+// inspectable and recoverable instead of being silently discarded.
+func (s *Store) Complete(id string, input CompletionInput) (Task, CompletionDecision, Event, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	task, err := s.loadLocked(id)
+	if err != nil {
+		return Task{}, CompletionDecision{}, Event{}, err
+	}
+	if terminal(task.Status) {
+		return Task{}, CompletionDecision{}, Event{}, fmt.Errorf("task %q is already terminal", id)
+	}
+	decision := EvaluateCompletion(input)
+	task.Status = TaskPartial
+	task.Outcome = decision.Outcome
+	task.UnresolvedFailures = input.UnresolvedFailures
+	if decision.Allowed {
+		task.Status = TaskCompleted
+	}
+	task.UpdatedAt = time.Now().UTC()
+	if terminal(task.Status) {
+		now := time.Now().UTC()
+		task.FinishedAt = &now
+	}
+	reason := strings.Join(decision.Reasons, "; ")
+	eventType := "task_partial"
+	if decision.Allowed {
+		eventType = "task_completed"
+	}
+	e, err := s.appendEventLocked(&task, eventType, map[string]string{
+		"outcome": decision.Outcome,
+		"reason":  reason,
+	})
+	if err != nil {
+		return Task{}, CompletionDecision{}, Event{}, err
+	}
+	if err := writeJSONAtomic(s.snapshotPath(id), task); err != nil {
+		return Task{}, CompletionDecision{}, Event{}, err
+	}
+	return task, decision, e, nil
 }
 
 func (s *Store) AppendEvent(id, typ string, payload any) (Event, error) {

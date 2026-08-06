@@ -23,8 +23,21 @@ func TestTaskStorePersistsRecordsAndResumesEventSequence(t *testing.T) {
 	if _, err := s.appendEvent("task-1", []byte(`{"kind":"turn_done"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.update("task-1", TaskCompleted, "", ""); err != nil {
+	if err := s.markToolStart("task-1", false, `{"path":"main.go"}`); err != nil {
 		t.Fatal(err)
+	}
+	if err := s.setFinalResponse("task-1", "implemented"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.setVerification("task-1", "VERIFIED"); err != nil {
+		t.Fatal(err)
+	}
+	decision, err := s.complete("task-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decision.Allowed {
+		t.Fatalf("completion decision = %+v", decision)
 	}
 
 	record := s.activeRecord()
@@ -237,7 +250,7 @@ func TestTaskStoreNodeCompletionIsIdempotent(t *testing.T) {
 	if record.CurrentNode != "builder" || record.LastSuccessfulNode != "builder" || record.Agent != "Builder" {
 		t.Fatalf("node state = %+v", record)
 	}
-	if err := s.update("task-node", TaskCompleted, "", "legacy test terminal state"); err != nil {
+	if err := s.update("task-node", TaskPartial, "", "legacy test terminal state"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.markNodeSuccess("task-node", "reviewer", "Reviewer"); err == nil {
@@ -266,6 +279,23 @@ func TestTaskStoreCompletionGateRejectsModelOnlyCompletion(t *testing.T) {
 	}
 	if record.Status != TaskPartial || record.ErrorClass != "completion_gate" {
 		t.Fatalf("record = %+v", record)
+	}
+}
+
+func TestTaskStoreLegacyUpdateCannotBypassCompletionGate(t *testing.T) {
+	s := newTaskStore(t.TempDir())
+	if _, err := s.start("task-no-bypass", "no bypass", "build", "deepseek", t.TempDir(), "session.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.update("task-no-bypass", TaskCompleted, "", "model says done"); err == nil {
+		t.Fatal("legacy update promoted task without completion evidence")
+	}
+	record, err := s.record("task-no-bypass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Status == TaskCompleted {
+		t.Fatalf("task was completed through bypass: %+v", record)
 	}
 }
 
