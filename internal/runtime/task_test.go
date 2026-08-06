@@ -30,6 +30,16 @@ func TestStorePersistsEventsBeforeSnapshotAndResumesBySequence(t *testing.T) {
 	if len(got) != 1 || got[0].Seq != 3 || got[0].Type != "task_verifying" {
 		t.Fatalf("events after sequence = %+v", got)
 	}
+	// Simulate a process dying after the journal flush but before the manifest
+	// replacement. Loading must repair the sequence from the durable journal.
+	stale, err := store.Load(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale.LastEventSeq = 0
+	if err := writeJSONAtomic(store.snapshotPath(task.ID), stale); err != nil {
+		t.Fatal(err)
+	}
 	loaded, err := store.Load(task.ID)
 	if err != nil {
 		t.Fatal(err)

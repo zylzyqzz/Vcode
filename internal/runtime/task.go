@@ -268,6 +268,10 @@ func (s *Store) appendEventLocked(task *Task, typ string, payload any) (Event, e
 		_ = f.Close()
 		return Event{}, fmt.Errorf("append event journal: %w", err)
 	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return Event{}, fmt.Errorf("flush event journal: %w", err)
+	}
 	if err := f.Close(); err != nil {
 		return Event{}, err
 	}
@@ -291,7 +295,46 @@ func (s *Store) loadLocked(id string) (Task, error) {
 	if err := json.Unmarshal(data, &task); err != nil {
 		return Task{}, fmt.Errorf("decode task manifest: %w", err)
 	}
+	if eventSeq, err := s.lastEventSeqLocked(id); err != nil {
+		return Task{}, err
+	} else if eventSeq > task.LastEventSeq {
+		// The event may have been flushed immediately before a process died
+		// during manifest replacement. Repair the sequence before callers append
+		// another event, otherwise the next event could reuse an ID.
+		task.LastEventSeq = eventSeq
+		task.UpdatedAt = time.Now().UTC()
+		if err := writeJSONAtomic(s.snapshotPath(id), task); err != nil {
+			return Task{}, err
+		}
+	}
 	return task, nil
+}
+
+func (s *Store) lastEventSeqLocked(id string) (uint64, error) {
+	f, err := os.Open(s.eventsPath(id))
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	var last uint64
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	for scanner.Scan() {
+		var event Event
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			return 0, fmt.Errorf("decode event journal: %w", err)
+		}
+		if event.Seq > last {
+			last = event.Seq
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, err
+	}
+	return last, nil
 }
 
 func validateTask(task Task) error {
