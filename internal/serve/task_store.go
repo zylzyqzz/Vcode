@@ -45,6 +45,8 @@ type TaskRecord struct {
 	ToolCalls          int        `json:"tool_calls"`
 	ToolFailures       int        `json:"tool_failures,omitempty"`
 	UnresolvedFailures int        `json:"unresolved_failures,omitempty"`
+	CurrentNode        string     `json:"current_node,omitempty"`
+	LastSuccessfulNode string     `json:"last_successful_node,omitempty"`
 	ModifiedFiles      []string   `json:"modified_files,omitempty"`
 	VerificationStatus string     `json:"verification_status,omitempty"`
 	FinalResponse      string     `json:"final_response,omitempty"`
@@ -254,6 +256,35 @@ func (s *taskStore) setAgent(id, agent string, status TaskStatus) error {
 	}
 	if status != "" {
 		record.Status = status
+	}
+	record.UpdatedAt = time.Now().UTC()
+	if s.active != nil && s.active.ID == id {
+		copy := *record
+		s.active = &copy
+	}
+	return s.writeRecordLocked(*record)
+}
+
+func (s *taskStore) markNodeSuccess(id, node, agent string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(node) == "" {
+		return fmt.Errorf("node is required")
+	}
+	record, err := s.recordLocked(id)
+	if err != nil {
+		return err
+	}
+	if terminalTaskStatus(record.Status) {
+		return fmt.Errorf("cannot complete node on terminal task %q", id)
+	}
+	if record.LastSuccessfulNode == node {
+		return nil
+	}
+	record.CurrentNode = node
+	record.LastSuccessfulNode = node
+	if strings.TrimSpace(agent) != "" {
+		record.Agent = agent
 	}
 	record.UpdatedAt = time.Now().UTC()
 	if s.active != nil && s.active.ID == id {
@@ -494,6 +525,17 @@ func (s *taskStore) activeRecord() *TaskRecord {
 	}
 	copy := *s.active
 	return &copy
+}
+
+func (s *taskStore) activate(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.recordLocked(id)
+	if err != nil {
+		return err
+	}
+	s.active = record
+	return nil
 }
 
 func (s *taskStore) record(id string) (*TaskRecord, error) {

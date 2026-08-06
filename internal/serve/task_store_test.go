@@ -200,6 +200,51 @@ func TestTaskStoreUpdatesNonActiveTaskByID(t *testing.T) {
 	}
 }
 
+func TestTaskStoreCanReactivateQueuedTaskByID(t *testing.T) {
+	s := newTaskStore(t.TempDir())
+	if _, err := s.start("task-first", "first", "build", "deepseek", "", "first.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.start("task-second", "second", "build", "deepseek", "", "second.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.update("task-first", TaskQueued, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.activate("task-first"); err != nil {
+		t.Fatal(err)
+	}
+	if current := s.activeRecord(); current == nil || current.ID != "task-first" || current.Status != TaskQueued {
+		t.Fatalf("task was not reactivated: %+v", current)
+	}
+}
+
+func TestTaskStoreNodeCompletionIsIdempotent(t *testing.T) {
+	s := newTaskStore(t.TempDir())
+	if _, err := s.start("task-node", "node tracking", "build", "deepseek", "", "session.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.markNodeSuccess("task-node", "builder", "Builder"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.markNodeSuccess("task-node", "builder", "Builder"); err != nil {
+		t.Fatal(err)
+	}
+	record, err := s.record("task-node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.CurrentNode != "builder" || record.LastSuccessfulNode != "builder" || record.Agent != "Builder" {
+		t.Fatalf("node state = %+v", record)
+	}
+	if err := s.update("task-node", TaskCompleted, "", "legacy test terminal state"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.markNodeSuccess("task-node", "reviewer", "Reviewer"); err == nil {
+		t.Fatal("terminal task accepted a node completion")
+	}
+}
+
 func TestTaskStoreCompletionGateRejectsModelOnlyCompletion(t *testing.T) {
 	s := newTaskStore(t.TempDir())
 	if _, err := s.start("task-gate", "change code", "build", "deepseek", t.TempDir(), "session.jsonl"); err != nil {

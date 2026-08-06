@@ -50,7 +50,10 @@ func (s *Server) runPipeline(id, goal string) {
 	runStage := func(role, prompt string, planMode bool) error {
 		s.bc.Emit(event.Event{Kind: event.Phase, Text: role})
 		ctrl.SetPlanMode(planMode)
-		return ctrl.Run(ctx, prompt)
+		if err := ctrl.Run(ctx, prompt); err != nil {
+			return err
+		}
+		return s.tasks.markNodeSuccess(id, strings.ToLower(role), role)
 	}
 
 	// Explorer and Planner are read-only turns. Their findings remain in the
@@ -77,6 +80,7 @@ func (s *Server) runPipeline(id, goal string) {
 			s.finishPipeline(id, TaskPartial, "debugger_failed", err.Error())
 			return
 		}
+		_ = s.tasks.markNodeSuccess(id, fmt.Sprintf("debugger-%d", attempt), "Debugger")
 		result = verify.Run(ctx, ctrl.WorkspaceRoot())
 		_ = s.tasks.setVerification(id, string(result.Status))
 	}

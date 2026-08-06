@@ -327,7 +327,17 @@ func (s *Server) apiTaskControl(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid control body", http.StatusBadRequest)
 		return
 	}
-	switch strings.ToLower(strings.TrimSpace(body.Action)) {
+	action := strings.ToLower(strings.TrimSpace(body.Action))
+	current := s.tasks.activeRecord()
+	if (action == "pause" || action == "cancel") && (current == nil || current.ID != id) {
+		http.Error(w, "task is not the active controller task", http.StatusConflict)
+		return
+	}
+	if current != nil && current.ID != id && s.ctl().Running() {
+		http.Error(w, "another task is currently running", http.StatusConflict)
+		return
+	}
+	switch action {
 	case "pause", "cancel":
 		s.ctl().Cancel()
 		status := TaskPaused
@@ -337,12 +347,21 @@ func (s *Server) apiTaskControl(w http.ResponseWriter, r *http.Request) {
 		_ = s.tasks.update(id, status, "user_cancelled", "任务被用户暂停")
 	case "continue", "retry":
 		_ = s.tasks.update(id, TaskQueued, "", "")
+		if err := s.tasks.activate(id); err != nil {
+			http.Error(w, "task activation failed", http.StatusInternalServerError)
+			return
+		}
 		s.bc.SetActiveTask(id)
 		s.ctl().SubmitHTTP("继续执行任务：" + record.Goal)
 	default:
 		http.Error(w, "action must be pause, continue, retry, or cancel", http.StatusBadRequest)
 		return
 	}
-	_ = s.tasks.audit(id, "task_control", map[string]string{"action": strings.ToLower(strings.TrimSpace(body.Action))})
-	writeJSON(w, map[string]string{"task_id": id, "status": string(s.tasks.activeRecord().Status)})
+	_ = s.tasks.audit(id, "task_control", map[string]string{"action": action})
+	updated, err := s.tasks.record(id)
+	if err != nil {
+		http.Error(w, "task state unavailable", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"task_id": id, "status": string(updated.Status)})
 }
