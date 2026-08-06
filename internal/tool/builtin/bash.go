@@ -302,7 +302,7 @@ func runShellProcess(ctx context.Context, cmd *exec.Cmd, sh sandbox.Shell, comma
 
 func reapShellProcess(cmd *exec.Cmd, tracked *proc.TrackedCommand) {
 	if tracked != nil {
-		tracked.Kill()
+		tracked.Reap()
 		return
 	}
 	proc.KillTree(cmd)

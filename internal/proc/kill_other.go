@@ -45,3 +45,7 @@ func StartTracked(cmd *exec.Cmd) (uintptr, error) {
 
 // KillTracked terminates cmd's process tree; the handle is unused off Windows.
 func KillTracked(cmd *exec.Cmd, _ uintptr) { KillTree(cmd) }
+
+// ReleaseTracked is a no-op off Windows; process groups are reclaimed by the
+// tree tracker and do not have a separate kernel handle to close.
+func ReleaseTracked(_ uintptr) {}

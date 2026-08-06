@@ -31,6 +31,11 @@ func rstAfter(t *testing.T, w http.ResponseWriter, prelude string) {
 	_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n")
 	_, _ = buf.WriteString(prelude)
 	_ = buf.Flush()
+	// Give the client a scheduling turn to receive the flushed SSE bytes before
+	// forcing the TCP reset. Without this, Windows can deliver the RST before
+	// the scanner observes the already-written token, making the test exercise a
+	// zero-output reconnect instead of the post-output no-replay contract.
+	time.Sleep(50 * time.Millisecond)
 	if tcp, ok := conn.(*net.TCPConn); ok {
 		_ = tcp.SetLinger(0)
 	}

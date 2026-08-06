@@ -43,7 +43,6 @@ func TrackTree(cmd *exec.Cmd) *TreeTracker {
 		done:    make(chan struct{}),
 		records: map[uint32]processRecord{},
 	}
-	t.record()
 	go t.loop()
 	return t
 }
@@ -76,7 +75,28 @@ func (t *TreeTracker) Kill() int {
 	return killed
 }
 
+// Reap removes descendants recorded before the root exited. Unlike Kill, it
+// does not rescan the process table or try to terminate the already-exited
+// root, keeping normal short-command cleanup cheap.
+func (t *TreeTracker) Reap() int {
+	if t == nil {
+		return 0
+	}
+	records := t.snapshot()
+	killed := 0
+	for _, rec := range records {
+		if rec.pid != t.root {
+			killed += terminateRecord(rec)
+		}
+	}
+	return killed
+}
+
 func (t *TreeTracker) loop() {
+	// Do the first process snapshot asynchronously. A Tool call commonly exits
+	// in a few milliseconds; blocking its start on a full Windows process-table
+	// scan makes every short command look slow, especially on a busy machine.
+	t.record()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -96,9 +116,11 @@ func (t *TreeTracker) record() {
 	records := processSnapshot()
 	t.mu.Lock()
 	if root, ok := records[t.root]; ok {
+		root.created, root.hasTimes = processCreationTime(root.pid)
 		t.records[t.root] = root
 	}
 	for _, rec := range descendantRecords(t.root, records) {
+		rec.created, rec.hasTimes = processCreationTime(rec.pid)
 		t.records[rec.pid] = rec
 	}
 	t.mu.Unlock()
@@ -154,7 +176,6 @@ func processSnapshot() map[uint32]processRecord {
 			parent: pe.ParentProcessID,
 			exe:    strings.ToLower(windows.UTF16ToString(pe.ExeFile[:])),
 		}
-		rec.created, rec.hasTimes = processCreationTime(pe.ProcessID)
 		records[rec.pid] = rec
 	}
 	return records
@@ -178,6 +199,9 @@ func terminateRecord(rec processRecord) int {
 		return 0
 	}
 	current, ok := processSnapshot()[rec.pid]
+	if ok {
+		current.created, current.hasTimes = processCreationTime(current.pid)
+	}
 	if !ok || !sameProcessIdentity(rec, current) {
 		return 0
 	}

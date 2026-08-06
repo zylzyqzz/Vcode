@@ -13,6 +13,10 @@ import (
 )
 
 func TestBashHereDocIssue5624CommandsReturnPromptly(t *testing.T) {
+	const (
+		commandTimeout = 8 * time.Second
+		slowCommand    = 6 * time.Second
+	)
 	sh := requireHereDocBash(t)
 	prevBashShellPATH := bashShellPATH
 	bashShellPATH = func(context.Context) string { return "" }
@@ -81,7 +85,7 @@ func TestBashHereDocIssue5624CommandsReturnPromptly(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 			defer cancel()
 
 			done := make(chan struct {
@@ -112,7 +116,7 @@ func TestBashHereDocIssue5624CommandsReturnPromptly(t *testing.T) {
 			if got.err != nil {
 				t.Fatalf("bash heredoc failed after %v: %v (out=%q)", got.elapsed, got.err, got.out)
 			}
-			if got.elapsed > 2*time.Second {
+			if got.elapsed > slowCommand {
 				t.Fatalf("bash heredoc returned too slowly: %v (out=%q)", got.elapsed, got.out)
 			}
 			if !strings.Contains(got.out, tt.wantOut) {

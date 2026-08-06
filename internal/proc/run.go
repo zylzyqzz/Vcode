@@ -196,18 +196,47 @@ func (p *TrackedCommand) Kill() {
 	}
 }
 
-// StopTracking stops background tree observation without killing the command.
+// Reap cleans up descendants after a normally completed command without
+// invoking the expensive taskkill fallback for the already-exited root. The
+// shell tool uses this for its post-command process cleanup; cancellation must
+// continue through Kill so the stronger whole-tree path remains unchanged.
+func (p *TrackedCommand) Reap() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	if p.killed {
+		p.mu.Unlock()
+		return
+	}
+	job := p.job
+	p.job = 0
+	tree := p.tree
+	p.tree = nil
+	p.mu.Unlock()
+	if tree != nil {
+		tree.Reap()
+		tree.Stop()
+	}
+	ReleaseTracked(job)
+}
+
+// StopTracking stops background tree observation and releases the Windows job
+// handle. The recorded tree is retained until Reap so callers can clean up
+// descendants after a normal command exit without using taskkill.
 func (p *TrackedCommand) StopTracking() {
 	if p == nil {
 		return
 	}
 	p.mu.Lock()
 	tree := p.tree
-	p.tree = nil
+	job := p.job
+	p.job = 0
 	p.mu.Unlock()
 	if tree != nil {
 		tree.Stop()
 	}
+	ReleaseTracked(job)
 }
 
 // Diagnostics returns a snapshot of local cancellation state.

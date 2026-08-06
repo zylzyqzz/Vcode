@@ -117,3 +117,12 @@ func KillTracked(cmd *exec.Cmd, job uintptr) {
 	}
 	KillTree(cmd)
 }
+
+// ReleaseTracked closes a completed command's job without running taskkill.
+// Closing a KILL_ON_JOB_CLOSE job still reaps descendants owned by the job;
+// callers separately inspect the recorded tree for launcher escapees.
+func ReleaseTracked(job uintptr) {
+	if job != 0 {
+		_ = windows.CloseHandle(windows.Handle(job))
+	}
+}
