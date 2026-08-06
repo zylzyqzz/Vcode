@@ -78,6 +78,60 @@ func TestTaskStoreMarksInFlightTaskRecoveringAfterRestart(t *testing.T) {
 	}
 }
 
+func TestTaskStoreMarksEveryInFlightTaskRecoveringAfterRestart(t *testing.T) {
+	root := t.TempDir()
+	s := newTaskStore(root)
+	for _, id := range []string{"task-recover-a", "task-recover-b"} {
+		if _, err := s.start(id, "long task "+id, "build", "deepseek", root, id+".jsonl"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	restarted := newTaskStore(root)
+	if err := restarted.load(); err != nil {
+		t.Fatal(err)
+	}
+	records, err := restarted.list()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected two recovered tasks, got %d", len(records))
+	}
+	for _, record := range records {
+		if record.Status != TaskRecovering || record.ErrorClass != "runtime_restart" {
+			t.Fatalf("task %s was not marked recoverable: %+v", record.ID, record)
+		}
+	}
+}
+
+func TestTaskStoreAppendsEventBeforeAdvancingSnapshot(t *testing.T) {
+	root := t.TempDir()
+	s := newTaskStore(root)
+	if _, err := s.start("task-order", "event order", "build", "deepseek", root, "session.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.appendEvent("task-order", []byte(`{"kind":"turn_started"}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(s.root, "task-order.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record TaskRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatal(err)
+	}
+	events, err := s.events("task-order", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.LastEvent != 1 || len(events) != 1 || events[0].Seq != record.LastEvent {
+		t.Fatalf("snapshot/event sequence diverged: record=%+v events=%+v", record, events)
+	}
+}
+
 func TestTaskJournalHTTPListAndReplay(t *testing.T) {
 	dir := t.TempDir()
 	bc := NewBroadcaster()

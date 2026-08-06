@@ -123,20 +123,30 @@ func (s *taskStore) load() error {
 		if json.Unmarshal(data, &record) != nil || record.ID == "" {
 			continue
 		}
+		if eventSeq, err := s.lastEventSeq(record.ID); err == nil && eventSeq > record.LastEvent {
+			// Recover a snapshot that was interrupted after the event was flushed
+			// but before the atomic task record replacement completed.
+			record.LastEvent = eventSeq
+			record.UpdatedAt = time.Now().UTC()
+			if err := s.writeRecordLocked(record); err != nil {
+				return err
+			}
+		}
+		if !terminalTaskStatus(record.Status) && record.Status != TaskRecovering {
+			// Never restore an in-flight task as if its process were still alive.
+			// Every non-terminal record is made recoverable before the store is
+			// exposed to the rest of the server.
+			record.Status = TaskRecovering
+			record.ErrorClass = "runtime_restart"
+			record.Error = "task interrupted by runtime restart; recovery is pending"
+			record.UpdatedAt = time.Now().UTC()
+			if err := s.writeRecordLocked(record); err != nil {
+				return err
+			}
+		}
 		if newest == nil || record.UpdatedAt.After(newest.UpdatedAt) {
 			copy := record
 			newest = &copy
-		}
-	}
-	if newest != nil && !terminalTaskStatus(newest.Status) {
-		// A process restart cannot safely pretend an in-flight turn is still
-		// running. Keep the durable record visible and make recovery explicit.
-		newest.Status = TaskRecovering
-		newest.ErrorClass = "runtime_restart"
-		newest.Error = "任务运行时已重启，请恢复后继续"
-		newest.UpdatedAt = time.Now().UTC()
-		if err := s.writeRecordLocked(*newest); err != nil {
-			return err
 		}
 	}
 	s.active = newest
@@ -417,34 +427,44 @@ func (s *taskStore) appendEvent(id string, payload []byte) (uint64, error) {
 	if err := s.init(); err != nil {
 		return 0, err
 	}
-	seq := uint64(1)
-	if record, err := s.recordLocked(id); err == nil {
-		seq = record.LastEvent + 1
-		record.LastEvent = seq
-		record.UpdatedAt = time.Now().UTC()
-		if err := s.writeRecordLocked(*record); err != nil {
-			return 0, err
-		}
-		if s.active != nil && s.active.ID == id {
-			copy := *record
-			s.active = &copy
-		}
-	} else if s.active == nil || s.active.ID != id {
+	record, err := s.recordLocked(id)
+	if err != nil {
 		return 0, err
 	}
+	seq := record.LastEvent + 1
 	path := filepath.Join(s.root, id+".events.jsonl")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
 	entry := taskEvent{Seq: seq, TaskID: id, At: time.Now().UTC(), Payload: append([]byte(nil), payload...)}
 	data, err := json.Marshal(entry)
 	if err != nil {
+		_ = f.Close()
 		return 0, err
 	}
 	if _, err := f.Write(append(data, '\n')); err != nil {
+		_ = f.Close()
 		return 0, err
+	}
+	// Persist the event before advancing the task snapshot. This ordering is
+	// required for restart recovery and prevents a snapshot from advertising
+	// a state change whose event was never durable.
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return 0, err
+	}
+	if err := f.Close(); err != nil {
+		return 0, err
+	}
+	record.LastEvent = seq
+	record.UpdatedAt = time.Now().UTC()
+	if err := s.writeRecordLocked(*record); err != nil {
+		return 0, err
+	}
+	if s.active != nil && s.active.ID == id {
+		copy := *record
+		s.active = &copy
 	}
 	return seq, nil
 }
@@ -510,6 +530,29 @@ func (s *taskStore) events(id string, after uint64) ([]taskEvent, error) {
 		}
 	}
 	return out, scanner.Err()
+}
+
+func (s *taskStore) lastEventSeq(id string) (uint64, error) {
+	if id == "" || filepath.Base(id) != id {
+		return 0, fmt.Errorf("invalid task id")
+	}
+	f, err := os.Open(filepath.Join(s.root, id+".events.jsonl"))
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	var last uint64
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var entry taskEvent
+		if json.Unmarshal(scanner.Bytes(), &entry) == nil && entry.Seq > last {
+			last = entry.Seq
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, err
+	}
+	return last, nil
 }
 
 func (s *taskStore) audit(id, action string, detail map[string]string) error {
