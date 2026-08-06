@@ -216,7 +216,12 @@ func TestRunShell_HeredocCancelReleasesTurn(t *testing.T) {
 	}, "\n")
 
 	ctrl.RunShell(command)
-	if !waitForFileContainingWithin(target, "TOKEN_EXAMPLE", 2*time.Second) {
+	// Git Bash can take several seconds to start on a busy Windows runner (the
+	// process tree probe also runs while the command is starting). Wait for the
+	// observable write rather than treating a slow shell launch as a failed
+	// heredoc. Cancellation is still exercised immediately after the body is
+	// known to be on disk.
+	if !waitForFileContainingWithin(target, "TOKEN_EXAMPLE", 10*time.Second) {
 		ctrl.Cancel()
 		waitForDoneWithin(t, done, shellWaitDelay+10*time.Second)
 		t.Fatalf("heredoc target body was not written before cancel: %s", target)
