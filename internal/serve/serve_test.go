@@ -158,7 +158,7 @@ func TestServeSubmitRejectsShellShortcut(t *testing.T) {
 
 func TestHistoryMessagesPreserveToolDetails(t *testing.T) {
 	got := historyMessages([]provider.Message{
-		{Role: provider.RoleUser, Content: "run command"},
+		{Role: provider.RoleUser, Content: "<reasoning-language>\nVisible reasoning/thinking text preference: use English.\n</reasoning-language>\n\nrun command"},
 		{Role: provider.RoleAssistant, Content: "checking", ReasoningContent: "think", ToolCalls: []provider.ToolCall{{
 			ID: "call_1", Name: "bash", Arguments: `{"command":"pwd"}`,
 		}}},
@@ -167,6 +167,9 @@ func TestHistoryMessagesPreserveToolDetails(t *testing.T) {
 
 	if len(got) != 3 {
 		t.Fatalf("history length = %d, want 3", len(got))
+	}
+	if got[0].Content != "run command" {
+		t.Fatalf("transient reasoning preference leaked into history: %q", got[0].Content)
 	}
 	if got[1].Reasoning != "think" {
 		t.Fatalf("assistant reasoning = %q, want think", got[1].Reasoning)

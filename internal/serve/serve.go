@@ -900,7 +900,14 @@ func historyMessages(msgs []provider.Message) []historyMessage {
 				continue
 			}
 		}
-		hm := historyMessage{Role: string(m.Role), Content: m.Content}
+		content := m.Content
+		if m.Role == provider.RoleUser {
+			// Reasoning/response language preferences are transient model
+			// instructions. They are stored in the provider turn for cache and
+			// replay correctness, but must never appear as user-visible history.
+			content = agent.StripTransientUserBlocks(content)
+		}
+		hm := historyMessage{Role: string(m.Role), Content: content}
 		if m.Role == provider.RoleAssistant {
 			hm.Reasoning = m.ReasoningContent
 			if len(m.ToolCalls) > 0 {
