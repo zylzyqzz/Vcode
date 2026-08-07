@@ -49,7 +49,7 @@ type Result struct {
 
 func (r Result) Error() string {
 	if len(r.Failed) == 0 {
-		return ""
+		return strings.TrimSpace(r.Skipped)
 	}
 	return strings.Join(r.Failed, "; ")
 }

@@ -655,14 +655,16 @@ func (s *Server) finishTask(id string) {
 		}
 	}
 	if record, err := s.tasks.record(id); err == nil && terminalTaskStatus(record.Status) {
-		kind := "task_failed"
-		if record.Status == TaskCompleted {
-			kind = "task_completed"
-		}
+		kind := taskLifecycleKind(record.Status)
 		s.bc.EmitTaskLifecycle(id, kind, map[string]any{
-			"status": string(record.Status),
-			"output": record.FinalResponse,
-			"error":  record.Error,
+			"status":         string(record.Status),
+			"outcome":        record.Outcome,
+			"final_response": record.FinalResponse,
+			// Keep output for older clients. New clients must render this as
+			// assistant content, never as an error fallback.
+			"output":      record.FinalResponse,
+			"error_class": record.ErrorClass,
+			"error":       record.Error,
 		})
 	}
 	s.taskMu.Lock()
@@ -672,6 +674,21 @@ func (s *Server) finishTask(id string) {
 			slog.Warn("serve: workspace lock release failed", "task", id, "err", err)
 		}
 		s.workspaceLock = nil
+	}
+}
+
+func taskLifecycleKind(status TaskStatus) string {
+	switch status {
+	case TaskCompleted:
+		return "task_completed"
+	case TaskPartial:
+		return "task_partial"
+	case TaskBlocked:
+		return "task_blocked"
+	case TaskCancelled:
+		return "task_cancelled"
+	default:
+		return "task_failed"
 	}
 }
 

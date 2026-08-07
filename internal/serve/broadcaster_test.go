@@ -53,3 +53,12 @@ func TestBroadcasterJournalsTaskLifecycle(t *testing.T) {
 		t.Fatalf("lifecycle event was not journaled: %#v %v", replayed, err)
 	}
 }
+
+func TestTaskLifecycleKindPreservesPartialOutcome(t *testing.T) {
+	if got := taskLifecycleKind(TaskPartial); got != "task_partial" {
+		t.Fatalf("partial lifecycle kind=%q", got)
+	}
+	if got := taskLifecycleKind(TaskFailed); got != "task_failed" {
+		t.Fatalf("failed lifecycle kind=%q", got)
+	}
+}

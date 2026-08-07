@@ -63,6 +63,13 @@ func TestPlanUnknownProjectIsUnverified(t *testing.T) {
 	}
 }
 
+func TestResultErrorReportsMissingVerificationPlan(t *testing.T) {
+	result := Result{Status: Unverified, Skipped: "no supported project verification command was found"}
+	if got := result.Error(); got != result.Skipped {
+		t.Fatalf("error=%q, want skipped reason %q", got, result.Skipped)
+	}
+}
+
 func TestRunReportsCancellationAsVerificationEvidence(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example\n"), 0o644); err != nil {

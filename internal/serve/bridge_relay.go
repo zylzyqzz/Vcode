@@ -117,8 +117,17 @@ func (r *bridgeRelay) record(message bridge.Message) {
 			switch payload.Type {
 			case "task_started":
 				task.Status = TaskRunning
-			case "task_completed":
-				task.Status = TaskCompleted
+			case "task_completed", "task_partial", "task_blocked", "task_cancelled":
+				switch payload.Type {
+				case "task_completed":
+					task.Status = TaskCompleted
+				case "task_partial":
+					task.Status = TaskPartial
+				case "task_blocked":
+					task.Status = TaskBlocked
+				case "task_cancelled":
+					task.Status = TaskCancelled
+				}
 				now := time.Now().UTC()
 				task.FinishedAt = &now
 			case "task_failed":
@@ -135,7 +144,6 @@ func (r *bridgeRelay) record(message bridge.Message) {
 		onEvent(message)
 	}
 }
-
 func (r *bridgeRelay) eventsAfter(taskID string, after uint64) ([]bridge.Message, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

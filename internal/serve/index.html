@@ -1348,15 +1348,45 @@ function acceptTaskEvent(taskID, seq, payload){
 }
 function handleWireEvent(e){
   if(e&&e.type==='task_started'){setRunning(true);return;}
+  const terminalResponse=e&&String(e.final_response||e.output||'').trim();
+  const appendTerminalResponse=()=>{
+    if(!terminalResponse)return;
+    finalizeMsg();
+    appendText(terminalResponse);
+    finalizeMsg();
+  };
   if(e&&e.type==='task_completed'){
     setRunning(false);stopRemotePoll();
-    if(e.output)appendText(String(e.output));
+    appendTerminalResponse();
     log.appendChild(el('div','notice','✓ 电脑端任务已完成'));scrollDown();
+    return;
+  }
+  if(e&&e.type==='task_partial'){
+    setRunning(false);stopRemotePoll();
+    appendTerminalResponse();
+    const reason=String(e.error||e.outcome||'UNVERIFIED').trim();
+    log.appendChild(el('div','notice notice--warn','任务未验证完成 · '+reason));scrollDown();
     return;
   }
   if(e&&e.type==='task_failed'){
     setRunning(false);stopRemotePoll();
-    log.appendChild(el('div','msg--error','任务失败：'+(e.error||e.output||'电脑端执行失败')));scrollDown();
+    // A model final answer is content, not an error. Older servers put it
+    // in `output`; never fall back to that field for the red error banner.
+    appendTerminalResponse();
+    const reason=String(e.error||'电脑端执行失败').trim();
+    log.appendChild(el('div','msg--error','任务失败：'+reason));scrollDown();
+    return;
+  }
+  if(e&&e.type==='task_blocked'){
+    setRunning(false);stopRemotePoll();
+    appendTerminalResponse();
+    log.appendChild(el('div','notice notice--warn','任务已阻断：'+String(e.error||'需要人工处理').trim()));scrollDown();
+    return;
+  }
+  if(e&&e.type==='task_cancelled'){
+    setRunning(false);stopRemotePoll();
+    appendTerminalResponse();
+    log.appendChild(el('div','notice notice--warn','任务已取消'));scrollDown();
     return;
   }
   if(e.kind!=='retrying')clearRetrying();
