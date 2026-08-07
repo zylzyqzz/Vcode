@@ -470,6 +470,12 @@ func (s *Server) RunGraceful(ctx context.Context, addr string) error {
 
 func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// The mobile client is a WebView/PWA and must receive the latest embedded
+	// layout after a server deployment. Without an explicit cache policy,
+	// browsers can keep an older index.html while CSS and event behavior have
+	// already changed underneath it.
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
 	_, _ = config.MigrateLegacyIfNeeded()
 	lang := "auto"
 	if cfg, err := config.Load(); err == nil {
@@ -647,6 +653,17 @@ func (s *Server) finishTask(id string) {
 		} else {
 			_ = s.tasks.update(id, TaskPartial, "verification_failed", result.Error())
 		}
+	}
+	if record, err := s.tasks.record(id); err == nil && terminalTaskStatus(record.Status) {
+		kind := "task_failed"
+		if record.Status == TaskCompleted {
+			kind = "task_completed"
+		}
+		s.bc.EmitTaskLifecycle(id, kind, map[string]any{
+			"status": string(record.Status),
+			"output": record.FinalResponse,
+			"error":  record.Error,
+		})
 	}
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()

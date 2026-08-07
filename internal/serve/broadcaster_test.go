@@ -30,3 +30,26 @@ func TestBroadcasterJournalsSequencedLiveFrames(t *testing.T) {
 		t.Fatalf("journal replay mismatch: %#v %v", replayed, err)
 	}
 }
+
+func TestBroadcasterJournalsTaskLifecycle(t *testing.T) {
+	store := newTaskStore(t.TempDir())
+	if _, err := store.start("task-2", "finish", "build", "model", "", "session"); err != nil {
+		t.Fatal(err)
+	}
+	b := NewBroadcaster()
+	b.SetTaskJournal(store)
+	ch, unsubscribe := b.Subscribe()
+	defer unsubscribe()
+	b.EmitTaskLifecycle("task-2", "task_completed", map[string]any{"status": "completed"})
+	var frame map[string]any
+	if err := json.Unmarshal(<-ch, &frame); err != nil {
+		t.Fatal(err)
+	}
+	if frame["type"] != "task_completed" || frame["task_id"] != "task-2" || frame["task_seq"] != float64(1) {
+		t.Fatalf("unexpected lifecycle frame: %#v", frame)
+	}
+	replayed, err := store.events("task-2", 0)
+	if err != nil || len(replayed) != 1 {
+		t.Fatalf("lifecycle event was not journaled: %#v %v", replayed, err)
+	}
+}

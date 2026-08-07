@@ -155,6 +155,46 @@ func (b *Broadcaster) EmitRemote(taskID string, seq uint64, payload json.RawMess
 	}
 }
 
+// EmitTaskLifecycle publishes a durable terminal event after the completion
+// gate has decided the task outcome. Model events can be dropped for a slow
+// browser, so the client needs one authoritative completed/failed frame that
+// can also be replayed from the task journal.
+func (b *Broadcaster) EmitTaskLifecycle(taskID, kind string, detail map[string]any) {
+	if b == nil || strings.TrimSpace(taskID) == "" || strings.TrimSpace(kind) == "" {
+		return
+	}
+	envelope := map[string]any{"type": kind}
+	for key, value := range detail {
+		envelope[key] = value
+	}
+	data, err := json.Marshal(envelope)
+	if err != nil {
+		return
+	}
+	b.mu.Lock()
+	if b.journal != nil {
+		seq, err := b.journal.appendEvent(taskID, data)
+		if err != nil {
+			b.mu.Unlock()
+			return
+		}
+		envelope["task_id"] = taskID
+		envelope["task_seq"] = seq
+		data, err = json.Marshal(envelope)
+		if err != nil {
+			b.mu.Unlock()
+			return
+		}
+	}
+	for ch := range b.subs {
+		select {
+		case ch <- data:
+		default:
+		}
+	}
+	b.mu.Unlock()
+}
+
 // Subscribe registers a new SSE client and returns its channel plus an
 // unsubscribe func the handler must call (defer) when the client disconnects.
 func (b *Broadcaster) Subscribe() (<-chan []byte, func()) {
