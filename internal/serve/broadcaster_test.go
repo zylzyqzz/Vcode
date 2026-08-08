@@ -3,6 +3,7 @@ package serve
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"vcode/internal/event"
 )
@@ -51,6 +52,24 @@ func TestBroadcasterJournalsTaskLifecycle(t *testing.T) {
 	replayed, err := store.events("task-2", 0)
 	if err != nil || len(replayed) != 1 {
 		t.Fatalf("lifecycle event was not journaled: %#v %v", replayed, err)
+	}
+}
+
+func TestBroadcasterKeepsNormalBurstInLiveBuffer(t *testing.T) {
+	b := NewBroadcaster()
+	ch, unsubscribe := b.Subscribe()
+	defer unsubscribe()
+
+	const burst = 256
+	for i := 0; i < burst; i++ {
+		b.Emit(event.Event{Kind: event.Text, Text: "chunk"})
+	}
+	for i := 0; i < burst; i++ {
+		select {
+		case <-ch:
+		case <-time.After(time.Second):
+			t.Fatalf("live burst frame %d was dropped", i)
+		}
 	}
 }
 

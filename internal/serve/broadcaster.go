@@ -18,7 +18,7 @@ type Broadcaster struct {
 	mu             sync.Mutex
 	subs           map[chan []byte]struct{}
 	journal        *taskStore
-	activeID       string
+	boundTaskID    string
 	onDone         func(string)
 	pipelineActive func(string) bool
 }
@@ -34,11 +34,28 @@ func (b *Broadcaster) SetTaskJournal(journal *taskStore) {
 	b.mu.Unlock()
 }
 
-func (b *Broadcaster) SetActiveTask(id string) {
+// BindTask associates controller events with one durable task. The controller
+// currently executes one turn at a time, but the binding is deliberately kept
+// at the event boundary instead of making the task store itself singleton.
+func (b *Broadcaster) BindTask(id string) {
 	b.mu.Lock()
-	b.activeID = id
+	b.boundTaskID = id
 	b.mu.Unlock()
 }
+
+// BoundTask returns the task currently receiving controller events. It is an
+// event-stream binding, not a global task record, and is only used for
+// approvals or controls that target the foreground controller turn.
+func (b *Broadcaster) BoundTask() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.boundTaskID
+}
+
+// SetActiveTask is retained for older callers while they migrate to BindTask.
+// It no longer points at a record in the task store; it only binds the current
+// controller event stream.
+func (b *Broadcaster) SetActiveTask(id string) { b.BindTask(id) }
 
 func (b *Broadcaster) SetTaskDoneHandler(fn func(string)) {
 	b.mu.Lock()
@@ -63,11 +80,12 @@ func (b *Broadcaster) Emit(e event.Event) {
 	b.mu.Lock()
 	var doneID string
 	var done func(string)
-	if b.journal != nil && b.activeID != "" {
-		seq, _ := b.journal.appendEvent(b.activeID, data)
+	taskID := b.boundTaskID
+	if b.journal != nil && taskID != "" {
+		seq, _ := b.journal.appendEvent(taskID, data)
 		var envelope map[string]any
 		if json.Unmarshal(data, &envelope) == nil {
-			envelope["task_id"] = b.activeID
+			envelope["task_id"] = taskID
 			// The journal is the source of the sequence. Live clients receive
 			// the same sequence so reconnects can request only missing events.
 			envelope["task_seq"] = seq
@@ -77,9 +95,9 @@ func (b *Broadcaster) Emit(e event.Event) {
 		}
 		switch e.Kind {
 		case event.TurnStarted:
-			_ = b.journal.update(b.activeID, TaskRunning, "", "")
+			_ = b.journal.update(taskID, TaskRunning, "", "")
 		case event.ApprovalRequest:
-			_ = b.journal.update(b.activeID, TaskWaitingPermission, "permission", "waiting for approval")
+			_ = b.journal.update(taskID, TaskWaitingPermission, "permission", "waiting for approval")
 		case event.Phase:
 			phase := strings.ToLower(e.Text)
 			agent := "Builder"
@@ -97,26 +115,26 @@ func (b *Broadcaster) Emit(e event.Event) {
 			case strings.Contains(phase, "explor"):
 				agent = "Explorer"
 			}
-			_ = b.journal.setAgent(b.activeID, agent, status)
+			_ = b.journal.setAgent(taskID, agent, status)
 		case event.Message:
-			_ = b.journal.setFinalResponse(b.activeID, e.Text)
+			_ = b.journal.setFinalResponse(taskID, e.Text)
 		case event.ToolDispatch:
-			_ = b.journal.markToolStart(b.activeID, e.Tool.ReadOnly, e.Tool.Args)
+			_ = b.journal.markToolStartWithID(taskID, e.Tool.ID, e.Tool.ReadOnly, e.Tool.Args)
 		case event.TurnDone:
-			if b.pipelineActive == nil || !b.pipelineActive(b.activeID) {
+			if b.pipelineActive == nil || !b.pipelineActive(taskID) {
 				if e.Err != nil {
-					_ = b.journal.update(b.activeID, TaskFailed, "unknown", e.Err.Error())
+					_ = b.journal.update(taskID, TaskFailed, "unknown", e.Err.Error())
 				} else {
 					// Verification and the completion gate run from the server's
 					// done callback. Do not promote a task from a model event alone.
-					_ = b.journal.update(b.activeID, TaskVerifying, "", "verification pending")
+					_ = b.journal.update(taskID, TaskVerifying, "", "verification pending")
 				}
-				id := b.activeID
-				b.activeID = ""
+				id := taskID
+				b.boundTaskID = ""
 				doneID, done = id, b.onDone
 			}
 		case event.ToolResult:
-			_ = b.journal.toolResult(b.activeID, strings.TrimSpace(e.Tool.Err) != "")
+			_ = b.journal.toolResultConfirmed(taskID, e.Tool.ID, strings.TrimSpace(e.Tool.Err) != "", e.Tool.ReadOnly)
 		}
 	}
 	for ch := range b.subs {
@@ -198,7 +216,10 @@ func (b *Broadcaster) EmitTaskLifecycle(taskID, kind string, detail map[string]a
 // Subscribe registers a new SSE client and returns its channel plus an
 // unsubscribe func the handler must call (defer) when the client disconnects.
 func (b *Broadcaster) Subscribe() (<-chan []byte, func()) {
-	ch := make(chan []byte, 64)
+	// A single model turn can produce hundreds of small reasoning/text/tool
+	// frames. Keep normal mobile-browser bursts live instead of making the UI
+	// look frozen until the durable journal is replayed.
+	ch := make(chan []byte, 1024)
 	b.mu.Lock()
 	b.subs[ch] = struct{}{}
 	b.mu.Unlock()

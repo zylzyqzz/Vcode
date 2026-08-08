@@ -328,30 +328,32 @@ func (s *Server) apiTaskControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	action := strings.ToLower(strings.TrimSpace(body.Action))
-	current := s.tasks.activeRecord()
-	if (action == "pause" || action == "cancel") && (current == nil || current.ID != id) {
+	currentID := s.bc.BoundTask()
+	if (action == "pause" || action == "cancel") && (currentID == "" || currentID != id) {
 		http.Error(w, "task is not the active controller task", http.StatusConflict)
 		return
 	}
-	if current != nil && current.ID != id && s.ctl().Running() {
+	if currentID != "" && currentID != id && s.ctl().Running() {
 		http.Error(w, "another task is currently running", http.StatusConflict)
 		return
 	}
 	switch action {
 	case "pause", "cancel":
 		s.ctl().Cancel()
-		status := TaskPaused
-		if strings.EqualFold(body.Action, "cancel") {
-			status = TaskCancelled
+		if err := s.taskRuntime.Control(r.Context(), id, action); err != nil {
+			http.Error(w, "task control failed: "+err.Error(), http.StatusConflict)
+			return
 		}
-		_ = s.tasks.update(id, status, "user_cancelled", "任务被用户暂停")
 	case "continue", "retry":
-		_ = s.tasks.update(id, TaskQueued, "", "")
+		if err := s.taskRuntime.Control(r.Context(), id, action); err != nil {
+			http.Error(w, "task control failed: "+err.Error(), http.StatusConflict)
+			return
+		}
 		if err := s.tasks.activate(id); err != nil {
 			http.Error(w, "task activation failed", http.StatusInternalServerError)
 			return
 		}
-		s.bc.SetActiveTask(id)
+		s.bc.BindTask(id)
 		s.ctl().SubmitHTTP("继续执行任务：" + record.Goal)
 	default:
 		http.Error(w, "action must be pause, continue, retry, or cancel", http.StatusBadRequest)

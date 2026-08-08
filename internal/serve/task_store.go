@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"vcode/internal/runtime"
+	"vcode/internal/verify"
 )
 
 type TaskStatus string
@@ -30,45 +31,47 @@ const (
 )
 
 type TaskRecord struct {
-	ID                 string     `json:"id"`
-	Goal               string     `json:"goal"`
-	Mode               string     `json:"mode,omitempty"`
-	Model              string     `json:"model,omitempty"`
-	Workspace          string     `json:"workspace,omitempty"`
-	SessionID          string     `json:"session_id,omitempty"`
-	Agent              string     `json:"agent,omitempty"`
-	Status             TaskStatus `json:"status"`
-	Outcome            string     `json:"outcome,omitempty"`
-	ErrorClass         string     `json:"error_class,omitempty"`
-	Error              string     `json:"error,omitempty"`
-	RetryCount         int        `json:"retry_count"`
-	ToolCalls          int        `json:"tool_calls"`
-	ToolFailures       int        `json:"tool_failures,omitempty"`
-	UnresolvedFailures int        `json:"unresolved_failures,omitempty"`
-	CurrentNode        string     `json:"current_node,omitempty"`
-	LastSuccessfulNode string     `json:"last_successful_node,omitempty"`
-	ModifiedFiles      []string   `json:"modified_files,omitempty"`
-	VerificationStatus string     `json:"verification_status,omitempty"`
-	FinalResponse      string     `json:"final_response,omitempty"`
-	WritesCompleted    bool       `json:"writes_completed"`
-	VerificationFresh  bool       `json:"verification_fresh"`
-	EvidenceRecorded   bool       `json:"evidence_recorded"`
-	DiffMatchesGoal    bool       `json:"diff_matches_goal"`
-	BoundaryViolations int        `json:"boundary_violations,omitempty"`
-	LastWriteAt        *time.Time `json:"last_write_at,omitempty"`
-	LastVerificationAt *time.Time `json:"last_verification_at,omitempty"`
-	LastEvent          uint64     `json:"last_event"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
-	FinishedAt         *time.Time `json:"finished_at,omitempty"`
+	ID                   string            `json:"id"`
+	Goal                 string            `json:"goal"`
+	Mode                 string            `json:"mode,omitempty"`
+	Model                string            `json:"model,omitempty"`
+	Workspace            string            `json:"workspace,omitempty"`
+	SessionID            string            `json:"session_id,omitempty"`
+	IdempotencyKey       string            `json:"idempotency_key,omitempty"`
+	Agent                string            `json:"agent,omitempty"`
+	Status               TaskStatus        `json:"status"`
+	Outcome              string            `json:"outcome,omitempty"`
+	ErrorClass           string            `json:"error_class,omitempty"`
+	Error                string            `json:"error,omitempty"`
+	RetryCount           int               `json:"retry_count"`
+	ToolCalls            int               `json:"tool_calls"`
+	ToolFailures         int               `json:"tool_failures,omitempty"`
+	UnresolvedFailures   int               `json:"unresolved_failures,omitempty"`
+	CurrentNode          string            `json:"current_node,omitempty"`
+	LastSuccessfulNode   string            `json:"last_successful_node,omitempty"`
+	ModifiedFiles        []string          `json:"modified_files,omitempty"`
+	VerificationStatus   string            `json:"verification_status,omitempty"`
+	VerificationChecks   []verify.Check    `json:"verification_checks,omitempty"`
+	VerificationEvidence []verify.Evidence `json:"verification_evidence,omitempty"`
+	VerificationFailed   []string          `json:"verification_failed,omitempty"`
+	VerificationSkipped  string            `json:"verification_skipped,omitempty"`
+	FinalResponse        string            `json:"final_response,omitempty"`
+	WritesCompleted      bool              `json:"writes_completed"`
+	VerificationFresh    bool              `json:"verification_fresh"`
+	EvidenceRecorded     bool              `json:"evidence_recorded"`
+	DiffMatchesGoal      bool              `json:"diff_matches_goal"`
+	PendingWriteFiles    []string          `json:"pending_write_files,omitempty"`
+	PendingReadOnlyIDs   []string          `json:"pending_read_only_ids,omitempty"`
+	BoundaryViolations   int               `json:"boundary_violations,omitempty"`
+	LastWriteAt          *time.Time        `json:"last_write_at,omitempty"`
+	LastVerificationAt   *time.Time        `json:"last_verification_at,omitempty"`
+	LastEvent            uint64            `json:"last_event"`
+	CreatedAt            time.Time         `json:"created_at"`
+	UpdatedAt            time.Time         `json:"updated_at"`
+	FinishedAt           *time.Time        `json:"finished_at,omitempty"`
 }
 
-type taskEvent struct {
-	Seq     uint64          `json:"seq"`
-	TaskID  string          `json:"task_id"`
-	At      time.Time       `json:"at"`
-	Payload json.RawMessage `json:"payload"`
-}
+type taskEvent = RuntimeEvent
 
 type taskAudit struct {
 	At     time.Time         `json:"at"`
@@ -78,9 +81,9 @@ type taskAudit struct {
 }
 
 type taskStore struct {
-	mu     sync.Mutex
-	root   string
-	active *TaskRecord
+	mu       sync.Mutex
+	root     string
+	latestID string
 }
 
 func terminalTaskStatus(status TaskStatus) bool {
@@ -152,13 +155,19 @@ func (s *taskStore) load() error {
 			newest = &copy
 		}
 	}
-	s.active = newest
+	if newest != nil {
+		s.latestID = newest.ID
+	}
 	return nil
 }
 
 func (s *taskStore) list() ([]TaskRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.listLocked()
+}
+
+func (s *taskStore) listLocked() ([]TaskRecord, error) {
 	if err := s.init(); err != nil {
 		return nil, err
 	}
@@ -184,18 +193,76 @@ func (s *taskStore) list() ([]TaskRecord, error) {
 }
 
 func (s *taskStore) start(id, goal, mode, model, workspace, sessionID string) (TaskRecord, error) {
+	return s.startWithKey(id, goal, mode, model, workspace, sessionID, "")
+}
+
+func (s *taskStore) startWithKey(id, goal, mode, model, workspace, sessionID, idempotencyKey string) (TaskRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.init(); err != nil {
 		return TaskRecord{}, err
 	}
+	if existing, err := s.findByIdempotencyLocked(idempotencyKey); err != nil {
+		return TaskRecord{}, err
+	} else if existing != nil {
+		return *existing, nil
+	}
 	now := time.Now().UTC()
-	record := TaskRecord{ID: id, Goal: goal, Mode: mode, Model: model, Workspace: workspace, SessionID: sessionID, Agent: "Builder", Status: TaskQueued, CreatedAt: now, UpdatedAt: now}
+	record := TaskRecord{ID: id, Goal: goal, Mode: mode, Model: model, Workspace: workspace, SessionID: sessionID, IdempotencyKey: idempotencyKey, Agent: "Builder", Status: TaskQueued, CreatedAt: now, UpdatedAt: now}
 	if err := s.writeRecordLocked(record); err != nil {
 		return TaskRecord{}, err
 	}
-	s.active = &record
+	s.latestID = record.ID
 	return record, nil
+}
+
+func (s *taskStore) findByIdempotency(key string) (*TaskRecord, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.findByIdempotencyLocked(key)
+}
+
+func (s *taskStore) findByIdempotencyLocked(key string) (*TaskRecord, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, nil
+	}
+	records, err := s.listLocked()
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range records {
+		if record.IdempotencyKey == key {
+			copy := record
+			return &copy, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *taskStore) pausedForSession(sessionID string) (*TaskRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	records, err := s.listLocked()
+	if err != nil {
+		return nil, err
+	}
+	var newest *TaskRecord
+	for i := range records {
+		candidate := records[i]
+		if candidate.Status != TaskPaused || candidate.SessionID != sessionID {
+			continue
+		}
+		if newest == nil || candidate.UpdatedAt.After(newest.UpdatedAt) {
+			copy := candidate
+			newest = &copy
+		}
+	}
+	return newest, nil
 }
 
 func (s *taskStore) update(id string, status TaskStatus, errClass, message string) error {
@@ -216,10 +283,6 @@ func (s *taskStore) update(id string, status TaskStatus, errClass, message strin
 		now := time.Now().UTC()
 		record.FinishedAt = &now
 	}
-	if s.active != nil && s.active.ID == id {
-		copy := *record
-		s.active = &copy
-	}
 	return s.writeRecordLocked(*record)
 }
 
@@ -238,12 +301,10 @@ func (s *taskStore) toolResult(id string, failed bool) error {
 	if failed {
 		record.ToolFailures++
 		record.UnresolvedFailures++
+		record.ErrorClass = "tool_failure"
+		record.Error = "tool execution failed"
 	}
 	record.UpdatedAt = time.Now().UTC()
-	if s.active != nil && s.active.ID == id {
-		copy := *record
-		s.active = &copy
-	}
 	return s.writeRecordLocked(*record)
 }
 
@@ -261,10 +322,6 @@ func (s *taskStore) setAgent(id, agent string, status TaskStatus) error {
 		record.Status = status
 	}
 	record.UpdatedAt = time.Now().UTC()
-	if s.active != nil && s.active.ID == id {
-		copy := *record
-		s.active = &copy
-	}
 	return s.writeRecordLocked(*record)
 }
 
@@ -290,25 +347,29 @@ func (s *taskStore) markNodeSuccess(id, node, agent string) error {
 		record.Agent = agent
 	}
 	record.UpdatedAt = time.Now().UTC()
-	if s.active != nil && s.active.ID == id {
-		copy := *record
-		s.active = &copy
-	}
 	return s.writeRecordLocked(*record)
 }
 
 func (s *taskStore) setVerification(id, status string) error {
+	return s.setVerificationResult(id, verify.Result{Status: verify.Status(status)})
+}
+
+func (s *taskStore) setVerificationResult(id string, result verify.Result) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, err := s.recordLocked(id)
 	if err != nil {
 		return err
 	}
-	record.VerificationStatus = status
+	record.VerificationStatus = string(result.Status)
+	record.VerificationChecks = append([]verify.Check(nil), result.Checks...)
+	record.VerificationEvidence = append([]verify.Evidence(nil), result.Evidence...)
+	record.VerificationFailed = append([]string(nil), result.Failed...)
+	record.VerificationSkipped = result.Skipped
 	now := time.Now().UTC()
 	record.LastVerificationAt = &now
-	record.EvidenceRecorded = strings.TrimSpace(status) != ""
-	record.VerificationFresh = strings.EqualFold(strings.TrimSpace(status), "VERIFIED") &&
+	record.EvidenceRecorded = len(result.Evidence) > 0 || len(result.Checks) > 0 || strings.TrimSpace(string(result.Status)) != ""
+	record.VerificationFresh = strings.EqualFold(strings.TrimSpace(string(result.Status)), "VERIFIED") &&
 		(record.LastWriteAt == nil || !record.LastWriteAt.After(now))
 	if record.VerificationFresh {
 		// A successful verification after the last write is the evidence that
@@ -318,17 +379,17 @@ func (s *taskStore) setVerification(id, status string) error {
 	}
 	record.DiffMatchesGoal = len(record.ModifiedFiles) > 0
 	record.UpdatedAt = time.Now().UTC()
-	if s.active != nil && s.active.ID == id {
-		copy := *record
-		s.active = &copy
-	}
 	return s.writeRecordLocked(*record)
 }
 
-// markToolStart records write intent before the tool runs. This gives the
-// completion gate enough information to reject a successful-looking answer
-// when no write ever happened, while keeping the raw tool event authoritative.
+// markToolStart records a pending write, but does not claim that a write
+// happened. The completion gate only receives write evidence after the tool
+// result succeeds and the final workspace diff confirms the change.
 func (s *taskStore) markToolStart(id string, readOnly bool, args string) error {
+	return s.markToolStartWithID(id, "", readOnly, args)
+}
+
+func (s *taskStore) markToolStartWithID(id, toolID string, readOnly bool, args string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, err := s.recordLocked(id)
@@ -336,21 +397,62 @@ func (s *taskStore) markToolStart(id string, readOnly bool, args string) error {
 		return err
 	}
 	if !readOnly {
+		for _, path := range toolPaths(args) {
+			if path == "" || contains(record.PendingWriteFiles, path) || contains(record.ModifiedFiles, path) {
+				continue
+			}
+			record.PendingWriteFiles = append(record.PendingWriteFiles, path)
+		}
+	} else if strings.TrimSpace(toolID) != "" && !contains(record.PendingReadOnlyIDs, toolID) {
+		record.PendingReadOnlyIDs = append(record.PendingReadOnlyIDs, toolID)
+	}
+	record.UpdatedAt = time.Now().UTC()
+	return s.writeRecordLocked(*record)
+}
+
+// toolResultConfirmed records the result of a tool call. A successful
+// non-read-only result confirms the tool completed, but the actual changed
+// file list is still refreshed from the workspace before verification.
+func (s *taskStore) toolResultConfirmed(id, toolID string, failed, fallbackReadOnly bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.recordLocked(id)
+	if err != nil {
+		return err
+	}
+	record.ToolCalls++
+	readOnly := fallbackReadOnly || contains(record.PendingReadOnlyIDs, toolID)
+	// Some legacy synthetic tool results omit their ID and read-only bit. With
+	// no pending write intent, conservatively treat those as read-only; a write
+	// must carry a dispatch ID so it can be confirmed explicitly.
+	if toolID == "" && len(record.PendingWriteFiles) == 0 {
+		readOnly = true
+	}
+	if toolID != "" {
+		filtered := record.PendingReadOnlyIDs[:0]
+		for _, pendingID := range record.PendingReadOnlyIDs {
+			if pendingID != toolID {
+				filtered = append(filtered, pendingID)
+			}
+		}
+		record.PendingReadOnlyIDs = filtered
+	}
+	if failed {
+		record.ToolFailures++
+		record.UnresolvedFailures++
+		record.PendingWriteFiles = nil
+	} else if !readOnly {
 		record.WritesCompleted = true
 		now := time.Now().UTC()
 		record.LastWriteAt = &now
-		for _, path := range toolPaths(args) {
-			if path == "" || contains(record.ModifiedFiles, path) {
-				continue
+		for _, path := range record.PendingWriteFiles {
+			if path != "" && !contains(record.ModifiedFiles, path) {
+				record.ModifiedFiles = append(record.ModifiedFiles, path)
 			}
-			record.ModifiedFiles = append(record.ModifiedFiles, path)
 		}
+		record.PendingWriteFiles = nil
 	}
 	record.UpdatedAt = time.Now().UTC()
-	if s.active != nil && s.active.ID == id {
-		copy := *record
-		s.active = &copy
-	}
 	return s.writeRecordLocked(*record)
 }
 
@@ -363,10 +465,6 @@ func (s *taskStore) setFinalResponse(id, response string) error {
 	}
 	record.FinalResponse = strings.TrimSpace(response)
 	record.UpdatedAt = time.Now().UTC()
-	if s.active != nil && s.active.ID == id {
-		copy := *record
-		s.active = &copy
-	}
 	return s.writeRecordLocked(*record)
 }
 
@@ -377,13 +475,15 @@ func (s *taskStore) setModifiedFiles(id string, files []string) error {
 	if err != nil {
 		return err
 	}
+	changed := !sameStringList(record.ModifiedFiles, files)
 	record.ModifiedFiles = append([]string(nil), files...)
 	record.DiffMatchesGoal = len(record.ModifiedFiles) > 0
-	record.UpdatedAt = time.Now().UTC()
-	if s.active != nil && s.active.ID == id {
-		copy := *record
-		s.active = &copy
+	if changed && len(record.ModifiedFiles) > 0 {
+		record.WritesCompleted = true
+		now := time.Now().UTC()
+		record.LastWriteAt = &now
 	}
+	record.UpdatedAt = time.Now().UTC()
 	return s.writeRecordLocked(*record)
 }
 
@@ -426,10 +526,6 @@ func (s *taskStore) complete(id string) (runtime.CompletionDecision, error) {
 		record.ErrorClass = ""
 		record.Error = ""
 	}
-	if s.active != nil && s.active.ID == id {
-		copy := *record
-		s.active = &copy
-	}
 	if err := s.writeRecordLocked(*record); err != nil {
 		return runtime.CompletionDecision{}, err
 	}
@@ -466,6 +562,18 @@ func contains(items []string, want string) bool {
 	return false
 }
 
+func sameStringList(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *taskStore) appendEvent(id string, payload []byte) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -482,7 +590,24 @@ func (s *taskStore) appendEvent(id string, payload []byte) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	entry := taskEvent{Seq: seq, TaskID: id, At: time.Now().UTC(), Payload: append([]byte(nil), payload...)}
+	typeHint := "event"
+	var hint map[string]any
+	if json.Unmarshal(payload, &hint) == nil {
+		if value, ok := hint["kind"].(string); ok && strings.TrimSpace(value) != "" {
+			typeHint = value
+		} else if value, ok := hint["type"].(string); ok && strings.TrimSpace(value) != "" {
+			typeHint = value
+		}
+	}
+	entry := taskEvent{
+		EventID:   fmt.Sprintf("%s:%d", id, seq),
+		Seq:       seq,
+		TaskID:    id,
+		SessionID: record.SessionID,
+		Type:      typeHint,
+		Timestamp: time.Now().UTC(),
+		Payload:   append([]byte(nil), payload...),
+	}
 	data, err := json.Marshal(entry)
 	if err != nil {
 		_ = f.Close()
@@ -507,30 +632,24 @@ func (s *taskStore) appendEvent(id string, payload []byte) (uint64, error) {
 	if err := s.writeRecordLocked(*record); err != nil {
 		return 0, err
 	}
-	if s.active != nil && s.active.ID == id {
-		copy := *record
-		s.active = &copy
-	}
 	return seq, nil
 }
 
 func (s *taskStore) activeID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.active == nil {
-		return ""
-	}
-	return s.active.ID
+	return s.latestID
 }
 
 func (s *taskStore) activeRecord() *TaskRecord {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.active == nil {
-		return nil
+	if s.latestID != "" {
+		if record, err := s.recordLocked(s.latestID); err == nil {
+			return record
+		}
 	}
-	copy := *s.active
-	return &copy
+	return s.newestRecordLocked()
 }
 
 func (s *taskStore) activate(id string) error {
@@ -540,8 +659,34 @@ func (s *taskStore) activate(id string) error {
 	if err != nil {
 		return err
 	}
-	s.active = record
+	s.latestID = record.ID
 	return nil
+}
+
+func (s *taskStore) newestRecordLocked() *TaskRecord {
+	entries, err := os.ReadDir(s.root)
+	if err != nil {
+		return nil
+	}
+	var newest *TaskRecord
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") || strings.HasSuffix(entry.Name(), ".tmp") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(s.root, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var record TaskRecord
+		if json.Unmarshal(data, &record) != nil || record.ID == "" {
+			continue
+		}
+		if newest == nil || record.UpdatedAt.After(newest.UpdatedAt) {
+			copy := record
+			newest = &copy
+		}
+	}
+	return newest
 }
 
 func (s *taskStore) record(id string) (*TaskRecord, error) {

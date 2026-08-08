@@ -47,6 +47,16 @@ func (s *Server) endPipeline(id string) {
 func (s *Server) runPipeline(id, goal string) {
 	ctx := context.Background()
 	ctrl := s.ctl()
+	verifyTask := func() verify.Result {
+		if record, err := s.tasks.record(id); err == nil {
+			if refreshErr := s.refreshTaskChanges(id, record.Workspace); refreshErr != nil {
+				_ = s.tasks.audit(id, "verification_workspace_snapshot_failed", map[string]string{"error": refreshErr.Error()})
+			}
+		}
+		result := verify.Run(ctx, ctrl.WorkspaceRoot())
+		_ = s.tasks.setVerificationResult(id, result)
+		return result
+	}
 	runStage := func(role, prompt string, planMode bool) error {
 		s.bc.Emit(event.Event{Kind: event.Phase, Text: role})
 		ctrl.SetPlanMode(planMode)
@@ -72,8 +82,7 @@ func (s *Server) runPipeline(id, goal string) {
 		return
 	}
 
-	result := verify.Run(ctx, ctrl.WorkspaceRoot())
-	_ = s.tasks.setVerification(id, string(result.Status))
+	result := verifyTask()
 	for attempt := 1; result.Status != verify.Verified && attempt <= 2; attempt++ {
 		_ = s.tasks.setAgent(id, "Debugger", TaskRecovering)
 		if err := runStage("Debugger", fmt.Sprintf("验证第 %d 次未通过。请根据失败证据定位根因并修复，只修改必要文件。完成后说明修复内容。\n失败证据：%s", attempt, result.Error()), false); err != nil {
@@ -81,8 +90,7 @@ func (s *Server) runPipeline(id, goal string) {
 			return
 		}
 		_ = s.tasks.markNodeSuccess(id, fmt.Sprintf("debugger-%d", attempt), "Debugger")
-		result = verify.Run(ctx, ctrl.WorkspaceRoot())
-		_ = s.tasks.setVerification(id, string(result.Status))
+		result = verifyTask()
 	}
 	if result.Status != verify.Verified {
 		s.finishPipeline(id, TaskPartial, "verification_failed", result.Error())
@@ -94,8 +102,7 @@ func (s *Server) runPipeline(id, goal string) {
 	}
 	// Run one final check after the review turn so the completion status is
 	// backed by fresh evidence rather than by the model's final wording.
-	result = verify.Run(ctx, ctrl.WorkspaceRoot())
-	_ = s.tasks.setVerification(id, string(result.Status))
+	result = verifyTask()
 	if result.Status == verify.Verified {
 		s.finishPipeline(id, TaskCompleted, "", "")
 	} else {
@@ -117,6 +124,6 @@ func (s *Server) finishPipeline(id string, status TaskStatus, class, message str
 		_ = s.tasks.update(id, status, class, message)
 	}
 	s.endPipeline(id)
-	s.bc.SetActiveTask("")
+	s.bc.BindTask("")
 	s.finishTask(id)
 }

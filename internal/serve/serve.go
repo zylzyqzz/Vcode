@@ -49,35 +49,48 @@ var faviconSVG []byte
 // Server wires a controller to its HTTP surface. The Broadcaster must be the
 // same sink the controller was constructed with, so events reach SSE clients.
 type Server struct {
-	mu            sync.RWMutex // guards ctrl, which switchModel swaps at runtime
-	taskMu        sync.Mutex
-	ctrl          control.SessionAPI
-	bc            *Broadcaster
-	tasks         *taskStore
-	projects      *projectStore
-	titleProv     provider.Provider // lightweight flash provider for session titles
-	titlePrice    *provider.Pricing
-	titles        *titleCache
-	auth          *authGate // nil when auth is disabled
-	workspaceLock *workspaceLock
-	pipelineMu    sync.Mutex
-	pipelines     map[string]struct{}
-	relay         *bridgeRelay
+	mu             sync.RWMutex // guards ctrl, which switchModel swaps at runtime
+	taskMu         sync.Mutex
+	ctrl           control.SessionAPI
+	bc             *Broadcaster
+	tasks          *taskStore
+	taskRuntime    TaskRuntime
+	projects       *projectStore
+	titleProv      provider.Provider // lightweight flash provider for session titles
+	titlePrice     *provider.Pricing
+	titles         *titleCache
+	auth           *authGate // nil when auth is disabled
+	workspaceLocks map[string]*workspaceLock
+	pipelineMu     sync.Mutex
+	pipelines      map[string]struct{}
+	relay          *bridgeRelay
+}
+
+// workspaceLockFor reads the in-process lock table. Callers that mutate the
+// table must hold taskMu; the table is intentionally keyed by task so a
+// finished task can never release another task's lock.
+func (s *Server) workspaceLockFor(taskID string) *workspaceLock {
+	if s == nil || s.workspaceLocks == nil || strings.TrimSpace(taskID) == "" {
+		return nil
+	}
+	return s.workspaceLocks[taskID]
 }
 
 // New builds a Server. bc must be the controller's event sink.
 // serveCfg controls authentication (none, token, or password).
 func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) *Server {
 	s := &Server{
-		ctrl:      ctrl,
-		bc:        bc,
-		tasks:     newTaskStore(ctrl.SessionDir()),
-		projects:  newProjectStore(ctrl.SessionDir()),
-		titles:    newTitleCache(ctrl.SessionDir()),
-		auth:      newAuthGate(serveCfg),
-		pipelines: map[string]struct{}{},
-		relay:     newBridgeRelay(serveCfg.BridgeToken),
+		ctrl:           ctrl,
+		bc:             bc,
+		tasks:          newTaskStore(ctrl.SessionDir()),
+		projects:       newProjectStore(ctrl.SessionDir()),
+		titles:         newTitleCache(ctrl.SessionDir()),
+		auth:           newAuthGate(serveCfg),
+		pipelines:      map[string]struct{}{},
+		workspaceLocks: map[string]*workspaceLock{},
+		relay:          newBridgeRelay(serveCfg.BridgeToken),
 	}
+	s.taskRuntime = newDurableTaskRuntime(s.tasks)
 	if err := s.tasks.load(); err != nil {
 		slog.Warn("serve: task journal load failed", "err", err)
 	}
@@ -574,6 +587,16 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "shell commands are unavailable over HTTP", http.StatusForbidden)
 		return
 	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if idempotencyKey != "" {
+		if existing, err := s.tasks.findByIdempotency(idempotencyKey); err != nil {
+			http.Error(w, "task journal unavailable", http.StatusInternalServerError)
+			return
+		} else if existing != nil {
+			writeJSONStatus(w, http.StatusAccepted, map[string]any{"task_id": existing.ID, "status": existing.Status, "duplicate": true})
+			return
+		}
+	}
 	// Intercept /model <ref> for runtime model switching (the controller's
 	// Submit path only lists models — switching is frontend-specific).
 	if strings.HasPrefix(trimmed, "/model ") {
@@ -606,17 +629,32 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 		id := fmt.Sprintf("task-%d", time.Now().UnixNano())
 		workspace := s.ctl().WorkspaceRoot()
 		var err error
-		if current := s.tasks.activeRecord(); current != nil && (current.Status == TaskPaused || (current.Status == TaskQueued && s.workspaceLock != nil && s.workspaceLock.ID == current.ID)) && current.SessionID == s.ctl().SessionPath() {
+		if current, lookupErr := s.tasks.pausedForSession(s.ctl().SessionPath()); lookupErr == nil && current != nil {
 			id = current.ID
-			if current.Status == TaskPaused {
-				err = s.tasks.adoptPaused(id)
-			}
+			err = s.tasks.adoptPaused(id)
 		} else {
 			if strings.TrimSpace(workspace) != "" {
-				s.workspaceLock, err = acquireWorkspaceLock(workspace, id)
+				var lock *workspaceLock
+				lock, err = acquireWorkspaceLock(workspace, id)
+				if err == nil {
+					s.workspaceLocks[id] = lock
+				}
 			}
 			if err == nil {
-				_, err = s.tasks.start(id, body.Input, currentWebMode(s.ctl()), s.ctl().Label(), workspace, s.ctl().SessionPath())
+				created, submitErr := s.taskRuntime.Submit(r.Context(), TaskRequest{
+					ID: id, Goal: body.Input, Mode: currentWebMode(s.ctl()),
+					Model: s.ctl().Label(), Workspace: workspace, SessionID: s.ctl().SessionPath(), IdempotencyKey: idempotencyKey,
+				})
+				err = submitErr
+				if err == nil && created != nil && created.ID != id {
+					if lock := s.workspaceLockFor(id); lock != nil {
+						_ = lock.release()
+						delete(s.workspaceLocks, id)
+					}
+					s.taskMu.Unlock()
+					writeJSONStatus(w, http.StatusAccepted, map[string]any{"task_id": created.ID, "status": created.Status, "duplicate": true})
+					return
+				}
 			}
 		}
 		if err != nil {
@@ -624,8 +662,9 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "start task: "+err.Error(), http.StatusConflict)
 			return
 		}
-		s.bc.SetActiveTask(id)
-		usePipeline = currentWebMode(s.ctl()) == "build" && shouldUsePipeline(body.Input)
+		s.bc.BindTask(id)
+		mode := currentWebMode(s.ctl())
+		usePipeline = (mode == "build" || mode == "goal") && shouldUsePipeline(body.Input)
 		if usePipeline {
 			s.beginPipeline(id)
 			pipelineID = id
@@ -645,9 +684,23 @@ func (s *Server) finishTask(id string) {
 	// after the final write, then let the hard completion gate decide whether
 	// this task is VERIFIED or only PARTIAL/UNVERIFIED.
 	if record, err := s.tasks.record(id); err == nil && record.Status == TaskVerifying {
-		_ = s.refreshTaskChanges(id, record.Workspace)
+		// TurnDone only means the model finished its turn. Keep clients informed
+		// while the real verification and completion gate are still running.
+		s.bc.EmitTaskLifecycle(id, "verification_started", map[string]any{
+			"status": "verifying",
+		})
+		if err := s.refreshTaskChanges(id, record.Workspace); err != nil {
+			_ = s.tasks.audit(id, "verification_workspace_snapshot_failed", map[string]string{"error": err.Error()})
+		}
 		result := verify.Run(context.Background(), record.Workspace)
-		_ = s.tasks.setVerification(id, string(result.Status))
+		_ = s.tasks.setVerificationResult(id, result)
+		s.bc.EmitTaskLifecycle(id, "verification_finished", map[string]any{
+			"status":   string(result.Status),
+			"error":    result.Error(),
+			"passed":   result.Passed,
+			"failed":   result.Failed,
+			"evidence": result.Evidence,
+		})
 		if result.Status == verify.Verified {
 			_, _ = s.tasks.complete(id)
 		} else {
@@ -669,11 +722,11 @@ func (s *Server) finishTask(id string) {
 	}
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()
-	if s.workspaceLock != nil && s.workspaceLock.ID == id {
-		if err := s.workspaceLock.release(); err != nil {
+	if lock := s.workspaceLockFor(id); lock != nil {
+		if err := lock.release(); err != nil {
 			slog.Warn("serve: workspace lock release failed", "task", id, "err", err)
 		}
-		s.workspaceLock = nil
+		delete(s.workspaceLocks, id)
 	}
 }
 
@@ -701,8 +754,22 @@ func (s *Server) refreshTaskChanges(id, workspace string) error {
 }
 
 func (s *Server) resumeDurableTask() {
-	record := s.tasks.activeRecord()
-	if record == nil || record.Status != TaskRecovering || record.ErrorClass != "runtime_restart" {
+	records, err := s.tasks.list()
+	if err != nil {
+		return
+	}
+	var record *TaskRecord
+	for i := range records {
+		candidate := records[i]
+		if candidate.Status != TaskRecovering || candidate.ErrorClass != "runtime_restart" {
+			continue
+		}
+		if record == nil || candidate.UpdatedAt.Before(record.UpdatedAt) {
+			copy := candidate
+			record = &copy
+		}
+	}
+	if record == nil {
 		return
 	}
 	go func() {
@@ -720,13 +787,17 @@ func (s *Server) resumeDurableTask() {
 			return
 		}
 		s.taskMu.Lock()
-		s.workspaceLock = lock
+		if lock != nil {
+			s.workspaceLocks[record.ID] = lock
+		}
 		s.taskMu.Unlock()
 		if err := s.tasks.adoptPaused(record.ID); err != nil {
-			_ = lock.release()
+			if lock != nil {
+				_ = lock.release()
+			}
 			return
 		}
-		s.bc.SetActiveTask(record.ID)
+		s.bc.BindTask(record.ID)
 		s.ctl().SubmitHTTP("继续执行上次未完成的任务：" + record.Goal)
 	}()
 }
@@ -787,7 +858,7 @@ func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	events, err := s.tasks.events(id, after)
+	events, err := s.taskRuntime.Events(id, after)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -826,8 +897,8 @@ func (s *Server) approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.ctl().Approve(body.ID, body.Allow, body.Session, body.Persist)
-	if task := s.tasks.activeRecord(); task != nil {
-		_ = s.tasks.audit(task.ID, "approval_decision", map[string]string{
+	if taskID := s.bc.BoundTask(); taskID != "" {
+		_ = s.tasks.audit(taskID, "approval_decision", map[string]string{
 			"allow":   strconv.FormatBool(body.Allow),
 			"session": strconv.FormatBool(body.Session),
 			"persist": strconv.FormatBool(body.Persist),

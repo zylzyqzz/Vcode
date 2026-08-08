@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,30 @@ import (
 	"vcode/internal/config"
 	"vcode/internal/control"
 )
+
+func TestDurableTaskRuntimeHonorsIdempotencyKey(t *testing.T) {
+	store := newTaskStore(t.TempDir())
+	runtime := newDurableTaskRuntime(store)
+	request := TaskRequest{Goal: "same task", Mode: "build", IdempotencyKey: "request-1"}
+	first, err := runtime.Submit(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := runtime.Submit(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("idempotency created two tasks: %q and %q", first.ID, second.ID)
+	}
+	records, err := store.list()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("task count = %d, want 1", len(records))
+	}
+}
 
 func TestTaskStorePersistsRecordsAndResumesEventSequence(t *testing.T) {
 	s := newTaskStore(t.TempDir())
@@ -24,6 +49,9 @@ func TestTaskStorePersistsRecordsAndResumesEventSequence(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.markToolStart("task-1", false, `{"path":"main.go"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.toolResultConfirmed("task-1", "write-1", false, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.setFinalResponse("task-1", "implemented"); err != nil {
@@ -307,6 +335,9 @@ func TestTaskStoreCompletionGateRequiresFreshVerification(t *testing.T) {
 	if err := s.markToolStart("task-gate-ok", false, `{"path":"main.go"}`); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.toolResultConfirmed("task-gate-ok", "write-1", false, false); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.setFinalResponse("task-gate-ok", "implemented"); err != nil {
 		t.Fatal(err)
 	}
@@ -337,6 +368,9 @@ func TestTaskStoreSuccessfulRecoveryClearsOnlyUnresolvedFailures(t *testing.T) {
 	if err := s.markToolStart("task-recovered", false, `{"path":"main.go"}`); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.toolResultConfirmed("task-recovered", "write-1", false, false); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.setFinalResponse("task-recovered", "fixed and verified"); err != nil {
 		t.Fatal(err)
 	}
@@ -356,5 +390,55 @@ func TestTaskStoreSuccessfulRecoveryClearsOnlyUnresolvedFailures(t *testing.T) {
 	}
 	if record.Status != TaskCompleted || record.ToolFailures != 1 || record.UnresolvedFailures != 0 {
 		t.Fatalf("recovery counters = %+v", record)
+	}
+}
+
+func TestTaskStoreDoesNotTreatFailedWriteIntentAsChange(t *testing.T) {
+	s := newTaskStore(t.TempDir())
+	if _, err := s.start("task-failed-write", "change code", "build", "deepseek", t.TempDir(), "session.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.markToolStart("task-failed-write", false, `{"path":"main.go"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.toolResultConfirmed("task-failed-write", "write-1", true, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.setFinalResponse("task-failed-write", "done"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.setVerification("task-failed-write", "VERIFIED"); err != nil {
+		t.Fatal(err)
+	}
+	decision, err := s.complete("task-failed-write")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Allowed {
+		t.Fatal("failed write intent was accepted as completion evidence")
+	}
+	record, err := s.record("task-failed-write")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(record.ModifiedFiles) != 0 || record.WritesCompleted {
+		t.Fatalf("failed write changed evidence: %+v", record)
+	}
+}
+
+func TestTaskStoreRuntimeEventCarriesIdentity(t *testing.T) {
+	s := newTaskStore(t.TempDir())
+	if _, err := s.start("task-event", "inspect", "build", "deepseek", "", "session.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.appendEvent("task-event", []byte(`{"kind":"turn_started"}`)); err != nil {
+		t.Fatal(err)
+	}
+	events, err := s.events("task-event", 0)
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events = %#v, err=%v", events, err)
+	}
+	if events[0].EventID != "task-event:1" || events[0].TaskID != "task-event" || events[0].SessionID != "session.jsonl" || events[0].Type != "turn_started" {
+		t.Fatalf("event identity = %#v", events[0])
 	}
 }

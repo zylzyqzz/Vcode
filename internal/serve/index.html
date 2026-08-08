@@ -1018,7 +1018,8 @@ function startRemotePoll(){
   // Keep reconciling cloud tasks too. The live SSE stream is deliberately
   // lossy for slow clients, so the durable task journal is the fallback that
   // prevents the UI from staying in V..... until the user refreshes.
-  remotePollTimer=setInterval(()=>{if(currentTaskID)recoverTaskEvents();},1000);
+  // Reconcile quickly after a mobile browser misses a live SSE frame.
+  remotePollTimer=setInterval(()=>{if(currentTaskID)recoverTaskEvents();},500);
 }
 function stopRemotePoll(){if(remotePollTimer){clearInterval(remotePollTimer);remotePollTimer=null;}}
 let followOutput = true;
@@ -1093,7 +1094,15 @@ function setConnState(state) {
   // state: 'connected' | 'reconnecting' | 'disconnected'
   const colors={connected:'var(--success)',reconnecting:'var(--warning)',disconnected:'var(--danger)'};
   const labels={connected:__('connected'),reconnecting:__('reconnecting'),disconnected:__('disconnected')};
-  if(!running){
+  if(running){
+    if(state==='connected'){
+      statusText.textContent='V.....';
+      statusText.classList.add('status-text--active');
+    }else{
+      statusText.textContent=state==='disconnected'?'连接中断，任务仍在云端运行':'正在重新连接…';
+      statusText.classList.add('status-text--active');
+    }
+  }else{
     activityLine.hidden=state==='connected';
     statusDot.style.background=colors[state]||'';
     statusDot.className='status__dot'+(state==='reconnecting'?' status__dot--busy':'');
@@ -1107,7 +1116,7 @@ function addUserMsg(text) { hideWelcome(); const d=el('div','msg msg--user'); d.
 function ensureMsg() { if(!currentMsg){hideWelcome();currentMsg=el('div','msg msg--assistant');log.appendChild(currentMsg);} return currentMsg; }
 function appendText(t) { const m=ensureMsg(); if(!currentText){currentText=document.createElement('span');currentText.className='msg__text'; const old=m.querySelector('.cursor');if(old)old.remove(); currentText.dataset.raw=''; m.appendChild(currentText); m.appendChild(el('span','cursor'));} currentText.dataset.raw+=(t||''); currentText.textContent=terminalizeText(currentText.dataset.raw); scrollDown(); }
 function appendReasoning(t) { const m=ensureMsg(); if(!currentReasoning){const w=el('div','reasoning'); const b=el('button','reasoning__toggle'); b.innerHTML='<span class="reasoning__chevron">▶</span> V.....'; const body=el('div','reasoning__body'); body.style.display='none'; b.onclick=()=>{body.style.display=body.style.display==='none'?'':'none';b.querySelector('.reasoning__chevron').className='reasoning__chevron'+(body.style.display!=='none'?' reasoning__chevron--open':'');}; w.appendChild(b);w.appendChild(body); if(currentText) m.insertBefore(w,currentText); else m.appendChild(w); currentReasoning=body;} currentReasoning.textContent+=t; scrollDown(); }
-function finalizeMsg() { if(currentMsg){const c=currentMsg.querySelector('.cursor');if(c)c.remove();} currentMsg=null;currentText=null;currentReasoning=null; }
+function finalizeMsg() { if(currentMsg){const c=currentMsg.querySelector('.cursor');if(c)c.remove(); if(currentText&&currentText.dataset.raw)lastAssistantText=currentText.dataset.raw;} currentMsg=null;currentText=null;currentReasoning=null; }
 
 // ── tool cards (v1 pattern) ──
 function renderToolDispatch(tool) {
@@ -1336,6 +1345,7 @@ let currentTaskID='';
 let currentTaskSeq=0;
 let historyLoaded=false;
 let recoveringTaskEvents=false;
+let lastAssistantText='';
 const seenTaskEvents=new Set();
 function acceptTaskEvent(taskID, seq, payload){
   const n=Number(seq)||0;
@@ -1348,9 +1358,16 @@ function acceptTaskEvent(taskID, seq, payload){
 }
 function handleWireEvent(e){
   if(e&&e.type==='task_started'){setRunning(true);return;}
+  if(e&&e.type==='verification_started'){
+    setRunning(true);fetchStatus();return;
+  }
+  if(e&&e.type==='verification_finished'){
+    // The terminal task event follows after the completion gate.
+    setRunning(true);fetchStatus();return;
+  }
   const terminalResponse=e&&String(e.final_response||e.output||'').trim();
   const appendTerminalResponse=()=>{
-    if(!terminalResponse)return;
+    if(!terminalResponse||terminalResponse===lastAssistantText)return;
     finalizeMsg();
     appendText(terminalResponse);
     finalizeMsg();
@@ -1389,9 +1406,18 @@ function handleWireEvent(e){
     log.appendChild(el('div','notice notice--warn','任务已取消'));scrollDown();
     return;
   }
+  if(e.kind==='turn_done'){
+    finalizeMsg();
+    // TurnDone is not task completion: verification may still be running.
+    if(currentTaskID){setRunning(true);startRemotePoll();}
+    else setRunning(false);
+    if(e.err&&!currentTaskID){log.appendChild(el('div','msg--error','✗ '+e.err));scrollDown();}
+    fetchStatus(); fetchTodos();
+    return;
+  }
   if(e.kind!=='retrying')clearRetrying();
   switch(e.kind){
-    case 'turn_started': setRunning(true); finalizeMsg(); toolCards={}; todosDismissed=false; break;
+    case 'turn_started': setRunning(true); finalizeMsg(); lastAssistantText=''; toolCards={}; todosDismissed=false; break;
     case 'reasoning': appendReasoning(e.reasoning||e.text||''); break;
     case 'text': currentReasoning=null; appendText(e.text||''); break;
     case 'message': finalizeMsg(); break;
@@ -1434,7 +1460,7 @@ function recoverTaskEvents(){
           // the durable transcript once so the user sees the final answer and
           // all tool output without a manual page refresh.
           return fetch('/history',{cache:'no-store'}).then(r=>r.ok?r.json():[]).then(msgs=>{
-            log.innerHTML='';log.appendChild(welcome);welcome.style.display='';
+            log.innerHTML='';log.appendChild(welcome);welcome.style.display='';lastAssistantText='';
             renderHistoryMessages(msgs);fetchTodos();
           });
         }
