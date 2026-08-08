@@ -25,7 +25,7 @@ jobs:
           script: |
             const base = context.payload.pull_request.base.ref;
             const label = base === 'v1' ? 'v1'
-                        : base === 'main-v2' ? 'v2'
+                        : base === 'master' ? 'v2'
                         : null;
             if (!label) {
               core.info(`Base branch '${base}' isn't a release line; skipping.`);

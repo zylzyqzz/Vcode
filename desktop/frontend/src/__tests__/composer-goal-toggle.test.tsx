@@ -210,7 +210,7 @@ async function replaceComposerDraft(rerender: RenderedComposer["rerender"], id: 
   await rerender({ insertRequest: { id, text, mode: "replace" } });
 }
 
-console.log("\ncomposer goal toggle");
+console.log("\ncomposer Build/Plan toggle");
 
 {
   const dom = installDom();
@@ -230,17 +230,17 @@ console.log("\ncomposer goal toggle");
     await flushTimers();
   });
 
-  const goalButton = document.querySelectorAll(".composer-intent-menu__item")[1] as HTMLButtonElement | undefined;
-  if (!goalButton) throw new Error("composer goal menu item did not render");
+  const planButton = document.querySelector('[data-intent="plan"]') as HTMLButtonElement | null;
+  if (!planButton) throw new Error("composer Plan menu item did not render");
 
   await act(async () => {
-    goalButton.click();
+    planButton.click();
     await flushTimers();
   });
 
-  eq(calls.send.length, 0, "enabling goal mode with a draft does not send");
-  eq(calls.setCollaborationMode.join(","), "goal", "enabling goal mode switches only the collaboration axis");
-  eq(textarea.value, "ship the release notes", "enabling goal mode preserves the draft text");
+  eq(calls.send.length, 0, "enabling Plan with a draft does not send");
+  eq(calls.setCollaborationMode.join(","), "plan", "enabling Plan switches the collaboration mode");
+  eq(textarea.value, "ship the release notes", "enabling Plan preserves the draft text");
 
   await act(async () => {
     root.unmount();
@@ -252,8 +252,7 @@ console.log("\ncomposer goal toggle");
   const dom = installDom();
   const { root, calls } = await renderComposer({
     running: true,
-    collaborationMode: "goal",
-    goal: "finish the migration",
+    collaborationMode: "plan",
     turnStartAt: Date.now(),
   });
 
@@ -265,8 +264,8 @@ console.log("\ncomposer goal toggle");
     await flushTimers();
   });
 
-  eq(calls.cancel, 1, "goal-mode stop cancels the running turn");
-  eq(calls.clearGoal, 1, "goal-mode stop clears the active goal");
+  eq(calls.cancel, 1, "Plan-mode stop cancels the running turn");
+  eq(calls.clearGoal, 0, "Plan-mode stop does not touch removed Goal state");
 
   await act(async () => {
     root.unmount();

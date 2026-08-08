@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUp, Check, ChevronDown, ChevronUp, ChevronsUpDown, CornerDownRight, Eye, FileText, Folder, Gauge, List, MessageSquare, Play, Search, Shield, ShieldAlert, ShieldCheck, SlidersHorizontal, Square, Target, Trash2, X } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, ChevronUp, ChevronsUpDown, CornerDownRight, Eye, FileText, Folder, Gauge, List, MessageSquare, Play, Search, SlidersHorizontal, Square, Trash2, X } from "lucide-react";
 import { asArray } from "../lib/array";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
@@ -8,7 +8,6 @@ import { app, onFilesDropped } from "../lib/bridge";
 import { canUsePromptHistory, isFnKeyEvent, promptHistoryDirectionFromEvent } from "../lib/composerKeyboard";
 import { cacheGeneration, loadOlder } from "../lib/composerHistory";
 import { SPINNER_WORDS, useI18n } from "../lib/i18n";
-import { detectShortcutPlatform, matchesShortcut } from "../lib/keyboardShortcuts";
 import { clearLayoutSize, loadOptionalLayoutSize, saveLayoutSize } from "../lib/layoutPreferences";
 import { createRafResizeUpdater } from "../lib/resizeDrag";
 import { useToast } from "../lib/toast";
@@ -501,7 +500,6 @@ export function Composer({
 }) {
   const { t, locale } = useI18n();
   const { showToast } = useToast();
-  const shortcutPlatform = useMemo(() => detectShortcutPlatform(), []);
   const now = useTick(running);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -1208,9 +1206,15 @@ export function Composer({
   });
 
   const planModeOn = collaborationMode === "plan";
-  const activeGoal = (goal ?? "").trim();
-  const goalModeOn = collaborationMode === "goal";
-  const tokenModeOn = tokenMode === "economy";
+  // Legacy props remain in the bridge contract so old tabs can hydrate, but
+  // the public composer exposes only Build and Plan.
+  void toolApprovalMode;
+  void tokenMode;
+  void goal;
+  void onSetToolApprovalMode;
+  void onToggleYoloApprovalMode;
+  void onClearGoal;
+  void onSetTokenMode;
   const warnImageInputFallback = useCallback((message = t("composer.imageInputUnsupported")) => {
     showToast(message, "warn");
   }, [showToast, t]);
@@ -1226,13 +1230,7 @@ export function Composer({
     }
     const currentAttachments = attachmentsRef.current;
     const currentWorkspaceRefs = workspaceRefsRef.current;
-    if (!trimmedText && currentAttachments.length === 0 && currentWorkspaceRefs.length === 0) {
-      if (goalModeOn && !activeGoal) {
-        setComposerPrompt(t("composer.goalInputRequired"));
-        requestAnimationFrame(() => taRef.current?.focus());
-      }
-      return;
-    }
+    if (!trimmedText && currentAttachments.length === 0 && currentWorkspaceRefs.length === 0) return;
     setComposerPrompt(null);
     submittingRef.current = true;
     setSubmitting(true);
@@ -1535,7 +1533,6 @@ export function Composer({
   // replied, the just-sent text is handed back so we drop it back into the input.
   const handleCancel = () => {
     const restored = onCancel();
-    if (goalModeOn && activeGoal) onClearGoal();
     if (typeof restored === "string") setTextCaretEnd(restored);
   };
 
@@ -1863,25 +1860,11 @@ export function Composer({
       }, 160);
     }
 
-    // Tab cycles through three collaboration modes (when no menu is open):
-    //   normal (build) → plan → goal → normal → ...
+    // Tab toggles the only two public modes: Build ↔ Plan.
     // When a slash/at menu is open, Tab selects the active item instead.
     if (e.key === "Tab" && !e.shiftKey && !composing && !menuMode) {
       e.preventDefault();
       onCycleMode();
-      return;
-    }
-
-    // Shift+Tab toggles token saver mode (full ↔ economy).
-    if (e.key === "Tab" && e.shiftKey && !composing && !menuMode) {
-      e.preventDefault();
-      onSetTokenMode(tokenMode === "economy" ? "full" : "economy");
-      return;
-    }
-
-    if (matchesShortcut(e.nativeEvent, "toolApproval.yolo", shortcutPlatform) && !composing) {
-      e.preventDefault();
-      onToggleYoloApprovalMode();
       return;
     }
 
@@ -2021,10 +2004,6 @@ export function Composer({
   const composerAutoExpanded = composerHeight === null && textareaAutoHeight !== null && textareaAutoHeight > 40;
   const composerResizeValue = composerHeight ?? clampComposerHeight((textareaAutoHeight ?? 0) + COMPOSER_AUTO_RESERVED_HEIGHT);
   void onSetMode;
-  const chooseApprovalMode = (nextMode: ToolApprovalMode) => {
-    onSetToolApprovalMode(nextMode);
-    requestAnimationFrame(() => taRef.current?.focus());
-  };
   const chooseBuildMode = () => {
     closeIntentMenu(() => {
       onSetCollaborationMode("normal");
@@ -2034,25 +2013,6 @@ export function Composer({
   const choosePlanMode = () => {
     closeIntentMenu(() => {
       onSetCollaborationMode(planModeOn ? "normal" : "plan");
-      requestAnimationFrame(() => taRef.current?.focus());
-    });
-  };
-  const chooseGoalMode = () => {
-    if (goalModeOn) {
-      closeIntentMenu(() => {
-        onClearGoal();
-        requestAnimationFrame(() => taRef.current?.focus());
-      });
-      return;
-    }
-    closeIntentMenu(() => {
-      onSetCollaborationMode("goal");
-      requestAnimationFrame(() => taRef.current?.focus());
-    });
-  };
-  const chooseTokenMode = () => {
-    closeIntentMenu(() => {
-      onSetTokenMode(tokenModeOn ? "full" : "economy");
       requestAnimationFrame(() => taRef.current?.focus());
     });
   };
@@ -2080,7 +2040,7 @@ export function Composer({
         })()
       : null;
   const submitEmpty = !text.trim() && attachments.length === 0 && workspaceRefs.length === 0;
-  const submitBlocked = submitting || pendingPaste > 0 || (submitEmpty && !(goalModeOn && !activeGoal)) || disabled || (!running && submitDisabled) || readOnly;
+  const submitBlocked = submitting || pendingPaste > 0 || submitEmpty || disabled || (!running && submitDisabled) || readOnly;
   const submitTooltip = running ? t("composer.queueGuidance") : t("composer.send");
   const composerPlaceholder = readOnly
     ? t("composer.readOnlyChannel")
@@ -2088,9 +2048,7 @@ export function Composer({
       ? t("common.loading")
       : running
         ? t("composer.steerPlaceholder")
-        : goalModeOn && !activeGoal
-          ? t("composer.goalInputPlaceholder")
-          : t("composer.placeholder");
+        : t("composer.placeholder");
   const hiddenGuidanceCount = Math.max(0, pendingGuidance.length - 2);
   const visibleGuidance = guidanceExpanded ? pendingGuidance : pendingGuidance.slice(0, 2);
   const showGuidanceExpander = pendingGuidance.length > 2;
@@ -2118,7 +2076,7 @@ export function Composer({
           <div className="composer-access-menu__label">{t("composer.intentMenuTitle")}</div>
           <button
             type="button"
-            className={`composer-access-menu__item composer-intent-menu__item${!planModeOn && !goalModeOn ? " composer-access-menu__item--active" : ""}`}
+            className={`composer-access-menu__item composer-intent-menu__item${!planModeOn ? " composer-access-menu__item--active" : ""}`}
             onClick={chooseBuildMode}
             disabled={disabled || running}
             title={t("composer.enterBuildTitle")}
@@ -2128,13 +2086,14 @@ export function Composer({
               <span className="composer-access-menu__title">{t("composer.modeBuild")}</span>
               <span className="composer-access-menu__desc">{t("composer.buildModeDesc")}</span>
             </span>
-            <span className={`composer-intent-switch${!planModeOn && !goalModeOn ? " composer-intent-switch--on" : ""}`} aria-hidden="true">
+            <span className={`composer-intent-switch${!planModeOn ? " composer-intent-switch--on" : ""}`} aria-hidden="true">
               <span />
             </span>
           </button>
           <button
             type="button"
             className={`composer-access-menu__item composer-intent-menu__item${planModeOn ? " composer-access-menu__item--active" : ""}`}
+            data-intent="plan"
             onClick={choosePlanMode}
             disabled={disabled || running}
             title={planModeOn ? t("composer.exitPlanTitle") : t("composer.enterPlanTitle")}
@@ -2145,38 +2104,6 @@ export function Composer({
               <span className="composer-access-menu__desc">{t("composer.planModeDesc")}</span>
             </span>
             <span className={`composer-intent-switch${planModeOn ? " composer-intent-switch--on" : ""}`} aria-hidden="true">
-              <span />
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`composer-access-menu__item composer-intent-menu__item${goalModeOn ? " composer-access-menu__item--active" : ""}`}
-            onClick={chooseGoalMode}
-            disabled={disabled || running}
-            title={goalModeOn ? activeGoal || t("composer.goalModeActiveDesc") : t("composer.goalModeDesc")}
-          >
-            <Target size={16} />
-            <span className="composer-access-menu__copy">
-              <span className="composer-access-menu__title">{t("composer.modeGoal")}</span>
-              <span className="composer-access-menu__desc">{goalModeOn ? activeGoal || t("composer.goalModeActiveDesc") : t("composer.goalModeDesc")}</span>
-            </span>
-            <span className={`composer-intent-switch${goalModeOn ? " composer-intent-switch--on" : ""}`} aria-hidden="true">
-              <span />
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`composer-access-menu__item composer-intent-menu__item${tokenModeOn ? " composer-access-menu__item--active" : ""}`}
-            onClick={chooseTokenMode}
-            disabled={disabled || running}
-            title={tokenModeOn ? t("composer.tokenEconomyOnDesc") : t("composer.tokenFullOnDesc")}
-          >
-            <Gauge size={16} />
-            <span className="composer-access-menu__copy">
-              <span className="composer-access-menu__title">{tokenModeOn ? t("composer.tokenEconomy") : t("composer.tokenFull")}</span>
-              <span className="composer-access-menu__desc">{tokenModeOn ? t("composer.tokenEconomyOnDesc") : t("composer.tokenFullOnDesc")}</span>
-            </span>
-            <span className={`composer-intent-switch${tokenModeOn ? " composer-intent-switch--on" : ""}`} aria-hidden="true">
               <span />
             </span>
           </button>
@@ -2602,7 +2529,7 @@ export function Composer({
                   <SlidersHorizontal size={17} />
                 </button>
               </Tooltip>
-              {!planModeOn && !goalModeOn && (
+              {!planModeOn && (
                 <Tooltip label={t("composer.exitBuildTitle")}>
                   <button
                     type="button"
@@ -2642,84 +2569,6 @@ export function Composer({
                   </button>
                 </Tooltip>
               )}
-              {goalModeOn && (
-                <Tooltip label={t("composer.exitGoalTitle")}>
-                  <button
-                    type="button"
-                    className="composer-mode-chip composer-mode-chip--goal"
-                    onClick={chooseGoalMode}
-                    disabled={disabled}
-                    title={activeGoal || t("composer.exitGoalTitle")}
-                    aria-label={t("composer.exitGoalTitle")}
-                  >
-                    <span className="composer-mode-chip__icon composer-mode-chip__icon--mode" aria-hidden="true">
-                      <Target size={14} />
-                    </span>
-                    <span className="composer-mode-chip__icon composer-mode-chip__icon--dismiss" aria-hidden="true">
-                      <X size={11} />
-                    </span>
-                    <span className="composer-mode-chip__label">{t("composer.modeGoal")}</span>
-                  </button>
-                </Tooltip>
-              )}
-              {true && (
-                <Tooltip label={tokenModeOn ? t("composer.tokenEconomyOnDesc") : t("composer.tokenFullOnDesc")}>
-                  <button
-                    type="button"
-                    className={`composer-mode-chip${tokenModeOn ? " composer-mode-chip--token" : " composer-mode-chip--token-full"}`}
-                    onClick={chooseTokenMode}
-                    disabled={disabled || running}
-                    title={tokenModeOn ? t("composer.tokenEconomyExitTitle") : t("composer.tokenFullExitTitle")}
-                    aria-label={tokenModeOn ? t("composer.tokenEconomyExitTitle") : t("composer.tokenFullExitTitle")}
-                  >
-                    <span className="composer-mode-chip__icon composer-mode-chip__icon--mode" aria-hidden="true">
-                      <Gauge size={14} />
-                    </span>
-                    <span className="composer-mode-chip__icon composer-mode-chip__icon--dismiss" aria-hidden="true">
-                      <X size={11} />
-                    </span>
-                    <span className="composer-mode-chip__label">{tokenModeOn ? t("composer.tokenEconomyShort") : t("composer.tokenFullShort")}</span>
-                  </button>
-                </Tooltip>
-              )}
-            </div>
-            <div className="composer-meta__control composer-meta__control--approval">
-              <div className="composer-modebar composer-modebar--approval" data-mode={toolApprovalMode} title={t("composer.accessMenuTitle")}>
-                <span className="composer-modebar__thumb" aria-hidden="true" />
-                <button
-                  type="button"
-                  className={`composer-modebar__item composer-modebar__item--ask${toolApprovalMode === "ask" ? " composer-modebar__item--active" : ""}`}
-                  onClick={() => chooseApprovalMode("ask")}
-                  disabled={disabled}
-                  aria-pressed={toolApprovalMode === "ask"}
-                  title={t("composer.accessAskTitle")}
-                >
-                  <Shield size={14} />
-                  <span>{t("composer.modeAsk")}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`composer-modebar__item composer-modebar__item--auto${toolApprovalMode === "auto" ? " composer-modebar__item--active" : ""}`}
-                  onClick={() => chooseApprovalMode("auto")}
-                  disabled={disabled}
-                  aria-pressed={toolApprovalMode === "auto"}
-                  title={t("composer.accessAutoTitle")}
-                >
-                  <ShieldCheck size={14} />
-                  <span>{t("composer.modeNormal")}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`composer-modebar__item composer-modebar__item--yolo${toolApprovalMode === "yolo" ? " composer-modebar__item--active" : ""}`}
-                  onClick={() => chooseApprovalMode("yolo")}
-                  disabled={disabled}
-                  aria-pressed={toolApprovalMode === "yolo"}
-                  title={t("composer.accessYoloTitle")}
-                >
-                  <ShieldAlert size={14} />
-                  <span>{t("composer.modeYolo")}</span>
-                </button>
-              </div>
             </div>
             <div className="composer-meta__control composer-meta__control--model">
               <ModelSwitcher label={modelLabel} tabId={tabId} onPick={onSwitchModel} />

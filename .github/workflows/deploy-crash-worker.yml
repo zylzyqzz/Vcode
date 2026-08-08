@@ -2,7 +2,7 @@ name: Deploy crash worker
 
 on:
   push:
-    branches: [main-v2]
+    branches: [master]
     paths:
       - 'workers/crash-report/**'
       - '.github/workflows/deploy-crash-worker.yml'

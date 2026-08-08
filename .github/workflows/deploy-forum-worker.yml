@@ -2,7 +2,7 @@ name: Deploy forum worker
 
 on:
   push:
-    branches: [main-v2]
+    branches: [master]
     paths:
       - 'workers/forum/**'
       - '.github/workflows/deploy-forum-worker.yml'

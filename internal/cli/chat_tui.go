@@ -297,8 +297,8 @@ type chatTUI struct {
 	// rebuildWithTokenMode rebuilds the controller with a new token mode,
 	// carrying the conversation across. nil when unavailable.
 	rebuildWithTokenMode func(mode string, carry []provider.Message, resumePath string) (*control.Controller, error)
-	modelRef        string
-	effortLevel     string // "" when the current provider/model has no configurable effort
+	modelRef             string
+	effortLevel          string // "" when the current provider/model has no configurable effort
 
 	// outputStyle is the active output-style name (config agent.output_style),
 	// shown as the current entry in the /output-style listing. "" = default.
@@ -448,14 +448,14 @@ type modelSwitchMsg struct {
 
 // tokenModeSwitchMsg carries the result of an async token mode switch.
 type tokenModeSwitchMsg struct {
-	ctrl    control.SessionAPI
-	oldCtrl control.SessionAPI
-	label   string
+	ctrl     control.SessionAPI
+	oldCtrl  control.SessionAPI
+	label    string
 	commands []command.Command
 	skills   []skill.Skill
 	host     *plugin.Host
-	mode    string
-	err     error
+	mode     string
+	err      error
 }
 
 // fetchBalance queries the provider's wallet balance off the event loop. It's a
@@ -506,6 +506,11 @@ type clipboardPasteMsg struct {
 // renders the events it emits. Label, history, host, and commands are read from
 // the controller, so a resumed session pre-populates scrollback.
 func newChatTUI(ctrl control.SessionAPI, missing string, eventCh chan event.Event, termW int) chatTUI {
+	// The public CLI has two modes only: Build is full-access execution and Plan
+	// is read-only planning. Keep the controller's legacy approval axis pinned to
+	// YOLO internally so Build never interrupts for tool approval.
+	ctrl.ClearGoal()
+	ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
 	ti := textarea.New()
 	configureChatTextarea(&ti)
 
@@ -525,7 +530,8 @@ func newChatTUI(ctrl control.SessionAPI, missing string, eventCh chan event.Even
 		input:                ti,
 		spinner:              sp,
 		shimmerFrame:         0,
-		planMode:             true,
+		planMode:             ctrl.PlanMode(),
+		goalMode:             false,
 		submittedInputCursor: -1,
 		queueEditCursor:      -1,
 		nextPasteID:          1,
@@ -1179,9 +1185,6 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			cmds = append(cmds, pasteClipboard())
 			return m, finalize(m, cmds)
-		case "ctrl+y", "super+y", "meta+y":
-			m.toggleYoloMode()
-			return m, nil
 		case "ctrl+o":
 			m.toggleVerboseReasoning(m.state != tuiRunning)
 			return m, finalize(m, cmds)
@@ -1189,20 +1192,11 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toggleShellOutput()
 			return m, finalize(m, cmds)
 		case "tab":
-			// Tab cycles through three collaboration modes:
-			//   build (normal) → plan → goal → build → ...
+			// Tab toggles the only two public modes: Build ↔ Plan.
 			if m.completion.active {
 				break // completion menu handles Tab itself
 			}
 			m.cycleMode()
-			return m, nil
-		case "shift+tab":
-			// Shift+Tab toggles token saver mode (full ↔ economy).
-			// This triggers an async controller rebuild.
-			if m.completion.active {
-				break
-			}
-			m.cycleTokenMode()
 			return m, nil
 		case "enter":
 			if m.state == tuiRunning {
@@ -2997,6 +2991,9 @@ func (m chatTUI) computeStatusLineCount(width int) int {
 	if et := m.effortTag(); et != "" {
 		status += " · " + et
 	}
+	if tt := m.tokenTag(); tt != "" {
+		status += " · " + tt
+	}
 	if gt := m.gitTag(); gt != "" {
 		status += " · " + gt
 	}
@@ -3072,29 +3069,21 @@ func (m *chatTUI) growInputToFit() {
 	}
 }
 
-// cycleMode handles the Tab key mode gesture. Cycles through:
-//   build (normal) → plan → goal → build → ...
+// cycleMode handles the Tab key mode gesture: Build ↔ Plan.
 func (m *chatTUI) cycleMode() {
-	if m.goalMode {
-		// goal → build
+	if m.planMode {
+		// Plan → Build.
+		m.planMode = false
 		m.goalMode = false
-		m.planMode = false
-		m.ctrl.ClearGoal()
-		m.ctrl.SetPlanMode(false)
-		m.ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
-	} else if m.planMode {
-		// plan → goal
-		m.planMode = false
-		m.goalMode = true
 		m.ctrl.SetPlanMode(false)
 		m.ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
 	} else {
-		// build → plan
+		// Build → Plan.
 		m.planMode = true
 		m.goalMode = false
 		m.ctrl.ClearGoal()
 		m.ctrl.SetPlanMode(true)
-		m.ctrl.SetToolApprovalMode(control.ToolApprovalAsk)
+		m.ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
 	}
 }
 
@@ -3670,7 +3659,7 @@ func (m *chatTUI) runSlashCommand(input string) tea.Cmd {
 			}
 		}))
 	case "/goal":
-		return m.runGoalSubcommand(input)
+		m.notice("Goal mode has been removed; use Build for execution or Plan for planning")
 	case "/remember":
 		note := strings.TrimSpace(strings.TrimPrefix(input, cmd))
 		if note == "" {

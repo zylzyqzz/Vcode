@@ -2745,7 +2745,7 @@ func TestCtrlCCopyBeatsClearInput(t *testing.T) {
 
 // TestEscInPlanModeDoesNotExitPlan — regression for the part of PR #3051 that
 // was missed: Esc was still falling into the case m.planMode branch. The
-// Shift+Tab cycle is the only path that flips plan mode; Esc must only
+// Tab cycle is the only path that flips plan mode; Esc must only
 // rewind / clear input. PR #3051 already removed the equivalent YOLO branch;
 // the m.ctrl.SetBypass path is exercised end-to-end in control/yolo_test.go
 // and intentionally not duplicated here.
@@ -2758,11 +2758,11 @@ func TestEscInPlanModeDoesNotExitPlan(t *testing.T) {
 	m2 := out.(chatTUI)
 
 	if !m2.planMode {
-		t.Error("Esc must not exit plan mode; only Shift+Tab should")
+		t.Error("Esc must not exit plan mode; only Tab should")
 	}
 }
 
-func TestDesktopShortcutLayoutShiftTabTogglesPlanOnly(t *testing.T) {
+func TestDesktopShortcutLayoutTabCyclesCollaborationModes(t *testing.T) {
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{})
 	m.ctrl.SetToolApprovalMode(control.ToolApprovalAuto)
@@ -2771,27 +2771,27 @@ func TestDesktopShortcutLayoutShiftTabTogglesPlanOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	shiftTab := tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
-	out, _ := m.Update(shiftTab)
+	tab := tea.KeyPressMsg{Code: tea.KeyTab}
+	out, _ := m.Update(tab)
 	m = out.(chatTUI)
 	if !m.planMode || !m.ctrl.PlanMode() {
-		t.Fatalf("first Shift+Tab should enter plan mode, tui=%v controller=%v", m.planMode, m.ctrl.PlanMode())
+		t.Fatalf("first Tab should enter plan mode, tui=%v controller=%v", m.planMode, m.ctrl.PlanMode())
 	}
-	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalAuto {
-		t.Fatalf("Shift+Tab changed approval mode to %q, want auto", got)
+	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
+		t.Fatalf("Tab entering plan set approval mode to %q, want yolo", got)
 	}
 
-	out, _ = m.Update(shiftTab)
+	out, _ = m.Update(tab)
 	m = out.(chatTUI)
-	if m.planMode || m.ctrl.PlanMode() {
-		t.Fatalf("second Shift+Tab should leave plan mode, tui=%v controller=%v", m.planMode, m.ctrl.PlanMode())
+	if m.planMode || m.ctrl.PlanMode() || m.goalMode {
+		t.Fatalf("second Tab should return to Build, plan=%v controllerPlan=%v goal=%v", m.planMode, m.ctrl.PlanMode(), m.goalMode)
 	}
-	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalAuto {
-		t.Fatalf("second Shift+Tab changed approval mode to %q, want auto", got)
+	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
+		t.Fatalf("Tab entering Build set approval mode to %q, want yolo", got)
 	}
 }
 
-func TestDesktopShortcutLayoutShiftTabClearsGoalWhenEnteringPlan(t *testing.T) {
+func TestDesktopShortcutLayoutTabClearsGoalWhenEnteringPlan(t *testing.T) {
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{})
 	m.ctrl.SetGoal("ship the shortcut redesign")
@@ -2800,17 +2800,17 @@ func TestDesktopShortcutLayoutShiftTabClearsGoalWhenEnteringPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	out, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = out.(chatTUI)
 	if !m.planMode || !m.ctrl.PlanMode() {
-		t.Fatalf("Shift+Tab should enter plan mode, tui=%v controller=%v", m.planMode, m.ctrl.PlanMode())
+		t.Fatalf("Tab should enter plan mode, tui=%v controller=%v", m.planMode, m.ctrl.PlanMode())
 	}
 	if got := m.ctrl.Goal(); got != "" {
-		t.Fatalf("Shift+Tab entering plan should clear goal, got %q", got)
+		t.Fatalf("Tab entering plan should clear goal, got %q", got)
 	}
 }
 
-func TestDesktopShortcutLayoutCtrlYTogglesYolo(t *testing.T) {
+func TestLegacyYoloShortcutsDoNotChangeApprovalMode(t *testing.T) {
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{})
 	m.cfg = config.Default()
@@ -2818,88 +2818,11 @@ func TestDesktopShortcutLayoutCtrlYTogglesYolo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctrlY := tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl}
-	out, _ := m.Update(ctrlY)
+	m.ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
+	out, _ := m.Update(tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl})
 	m = out.(chatTUI)
 	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
-		t.Fatalf("Ctrl+Y approval mode = %q, want yolo", got)
-	}
-
-	out, _ = m.Update(ctrlY)
-	m = out.(chatTUI)
-	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalAsk {
-		t.Fatalf("second Ctrl+Y approval mode = %q, want ask", got)
-	}
-}
-
-func TestDesktopShortcutLayoutCtrlYRestoresAutoAfterYolo(t *testing.T) {
-	m := newTestChatTUI()
-	m.ctrl = control.New(control.Options{})
-	m.ctrl.SetToolApprovalMode(control.ToolApprovalAuto)
-	m.cfg = config.Default()
-	if err := m.cfg.SetUIShortcutLayout("desktop"); err != nil {
-		t.Fatal(err)
-	}
-
-	ctrlY := tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl}
-	out, _ := m.Update(ctrlY)
-	m = out.(chatTUI)
-	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
-		t.Fatalf("Ctrl+Y approval mode = %q, want yolo", got)
-	}
-
-	out, _ = m.Update(ctrlY)
-	m = out.(chatTUI)
-	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalAuto {
-		t.Fatalf("second Ctrl+Y approval mode = %q, want restored auto", got)
-	}
-}
-
-func TestClassicShortcutLayoutCtrlYTogglesYolo(t *testing.T) {
-	m := newTestChatTUI()
-	m.ctrl = control.New(control.Options{})
-	m.cfg = config.Default()
-	if err := m.cfg.SetUIShortcutLayout("classic"); err != nil {
-		t.Fatal(err)
-	}
-
-	ctrlY := tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl}
-	out, cmd := m.Update(ctrlY)
-	if cmd != nil {
-		t.Fatal("Ctrl+Y should toggle YOLO directly, not return a paste command")
-	}
-	m = out.(chatTUI)
-	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
-		t.Fatalf("Ctrl+Y approval mode = %q, want yolo", got)
-	}
-
-	out, _ = m.Update(ctrlY)
-	m = out.(chatTUI)
-	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalAsk {
-		t.Fatalf("second Ctrl+Y approval mode = %q, want ask", got)
-	}
-}
-
-func TestPrimaryYShortcutRestoresAutoUnderClassicShortcutLayout(t *testing.T) {
-	m := newTestChatTUI()
-	m.ctrl = control.New(control.Options{})
-	m.ctrl.SetToolApprovalMode(control.ToolApprovalAuto)
-	m.cfg = config.Default()
-	if err := m.cfg.SetUIShortcutLayout("classic"); err != nil {
-		t.Fatal(err)
-	}
-
-	cmdY := tea.KeyPressMsg{Code: 'y', Mod: tea.ModSuper}
-	out, _ := m.Update(cmdY)
-	m = out.(chatTUI)
-	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
-		t.Fatalf("Cmd/Super+Y approval mode = %q, want yolo", got)
-	}
-
-	out, _ = m.Update(cmdY)
-	m = out.(chatTUI)
-	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalAuto {
-		t.Fatalf("second Cmd/Super+Y approval mode = %q, want restored auto", got)
+		t.Fatalf("Ctrl+Y changed Build full-access mode to %q", got)
 	}
 }
 
@@ -2928,7 +2851,7 @@ func TestDesktopShortcutLayoutDoesNotStealCompletionTab(t *testing.T) {
 	}
 }
 
-func TestShiftTabStillTogglesPlanUnderClassicShortcutLayout(t *testing.T) {
+func TestTabCyclesPlanUnderClassicShortcutLayout(t *testing.T) {
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{})
 	m.cfg = config.Default()
@@ -2936,12 +2859,12 @@ func TestShiftTabStillTogglesPlanUnderClassicShortcutLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	out, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = out.(chatTUI)
 	if !m.planMode || !m.ctrl.PlanMode() {
-		t.Fatalf("Shift+Tab should toggle plan mode, tui=%v controller=%v", m.planMode, m.ctrl.PlanMode())
+		t.Fatalf("Tab should enter plan mode, tui=%v controller=%v", m.planMode, m.ctrl.PlanMode())
 	}
-	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalAsk {
-		t.Fatalf("Shift+Tab changed approval mode to %q", got)
+	if got := m.ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
+		t.Fatalf("Tab changed approval mode to %q", got)
 	}
 }

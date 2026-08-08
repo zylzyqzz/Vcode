@@ -420,4 +420,4 @@ jobs:
         if: env.HAS_R2 == 'true' && steps.ver.outputs.channel != 'canary' && steps.ver.outputs.prerelease != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run pages.yml --ref main-v2
+        run: gh workflow run pages.yml --ref master

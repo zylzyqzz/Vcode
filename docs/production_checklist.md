@@ -1,59 +1,33 @@
-# Vcode v5 Stable Production Checklist
+# Vcode Production Release Checklist
 
-Vcode v5.9.9 is frozen as a stable release candidate. This checklist is the
-release gate for PR #5217 and future v5-stable maintenance work.
+This checklist is the release gate for the protected `master` branch and the
+public cloud runtime.
 
-## Release Gate
+## Repository gate
 
-All checks below must pass before the v5 stable release candidate is merged.
+- Required GitHub checks pass: root Go vet/test/race, desktop build/tests,
+  frontend build and production dependency audit, CodeQL and lint.
+- The release commit is on protected `master`; no direct push or force push was
+  used.
+- A Linux x86_64 static artifact and SHA-256 are produced from the exact commit.
+- No unaccepted moderate-or-higher production dependency advisory remains.
 
-## 1. Runtime Safety
+## Server gate
 
-- Sandbox isolation is verified.
-- Resource budgets use ledger-based two-phase reservation and commit.
-- No shared execution context can leak across sandboxed executions.
+- `nginx -t` succeeds before every reload.
+- HTTPS certificate validity exceeds 14 days; `/status` returns the expected
+  unauthenticated 401 at the loopback and public edge.
+- `vcode-prod.service` is active; root Build authority is an explicit accepted
+  operating risk on the shared host.
+- Root/password SSH is disabled; key-only operator access and cloud-console
+  recovery have been verified.
+- Disk usage is below 85%; 75% usage is recorded for remediation.
 
-## 2. Control System Stability
+## Release and recovery gate
 
-- Distributed control plane is active and deterministic.
-- Global equilibrium layer is deterministic.
-- No single meta-controller is reintroduced.
-
-## 3. Memory System Safety
-
-- Causal compression is stable.
-- Long-tail predictive and causal signal retention is validated.
-- Truth-lock decay changes influence weight only, not correctness.
-
-## 4. Predictive System Isolation
-
-- Shadow observer remains read-only.
-- Prediction-action bridge is advisory-only.
-- Predictive warnings do not feed back into execution automatically.
-
-## 5. Temporal System
-
-- Dual logical and physical time reporting is visible.
-- Lag and damping windows remain separated.
-- Physical latency variance is not hidden by logical time normalization.
-
-## 6. Architecture Freeze
-
-- `system.StableSystemContract()` validates the v5.9.9 release boundary.
-- `system.ArchitectureLocked` is enabled.
-- v6-pre diagnostics remain observation-only.
-
-## 7. Observability
-
-- Trace and diagnostic systems remain non-invasive.
-- Layer-collapse diagnostics do not affect runtime, prompts, provider requests,
-  or tool schemas.
-
-## Final Release Flow
-
-1. Validate the stable system contract.
-2. Confirm the architecture lock is enabled.
-3. Confirm v6-pre diagnostics are isolated.
-4. Pass the production checklist.
-5. Pass `system.ReleaseGuard()`.
-6. Merge as the v5.9.9 stable release candidate.
+- The deployment uses the immutable artifact workflow and preserves the three
+  most recent verified releases.
+- A restart/reconnect smoke test passes from the mobile browser.
+- The daily encrypted backup has completed successfully, or the release is
+  blocked until its external backup configuration is present.
+- A rollback drill and restore drill have been run for the current release line.

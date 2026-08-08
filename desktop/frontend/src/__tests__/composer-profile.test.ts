@@ -97,7 +97,7 @@ console.log("\ncomposer profile");
 
   eq(displayedComposerProfileCollaborationMode(profiles["tab-1"]), "plan", "stale tab hydration keeps locally selected plan mode");
   eq(profiles["tab-1"].tokenMode, "economy", "token saver remains independent of collaboration mode changes");
-  eq(composerProfileMode(profiles["tab-1"]), "plan", "compat mode keeps the plan axis enabled");
+  eq(composerProfileMode(profiles["tab-1"]), "plan-yolo", "Plan keeps full tool access internally while the read-only planner gate is active");
   eq(Boolean(profiles["tab-1"].pending.collaborationMode), true, "pending plan stays pending until backend acknowledges it");
 
   profiles = hydrateComposerProfilesFromTabs(profiles, [tab({ mode: "plan", collaborationMode: "plan", tokenMode: "economy" })]);
@@ -133,9 +133,9 @@ console.log("\ncomposer profile");
   );
   profiles = hydrateComposerProfilesFromTabs(profiles, [tab()]);
 
-  eq(displayedComposerProfileCollaborationMode(profiles["tab-1"]), "goal", "empty goal draft remains visible through stale tab hydration");
-  eq(controllerComposerProfileCollaborationMode(profiles["tab-1"]), "normal", "empty goal draft syncs to controller as normal");
-  eq(composerProfileMode(profiles["tab-1"]), "normal", "empty goal draft does not enable plan compatibility mode");
+  eq(displayedComposerProfileCollaborationMode(profiles["tab-1"]), "normal", "legacy Goal drafts collapse to Build");
+  eq(controllerComposerProfileCollaborationMode(profiles["tab-1"]), "normal", "legacy Goal drafts sync to Build");
+  eq(composerProfileMode(profiles["tab-1"]), "yolo", "Build keeps full tool access internally");
 }
 
 {
@@ -152,10 +152,10 @@ console.log("\ncomposer profile");
   profiles = hydrateComposerProfilesFromTabs(profiles, [tab({ toolApprovalMode: "auto" })]);
   profiles = hydrateComposerProfilesFromTabs(profiles, [tab({ toolApprovalMode: "" })]);
 
-  eq(profiles["tab-1"].toolApprovalMode, "auto", "blank tab payload does not demote explicit auto approval mode to ask");
+  eq(profiles["tab-1"].toolApprovalMode, "yolo", "tab hydration keeps Build full-access");
 
   profiles = hydrateComposerProfileFromMeta(profiles, "tab-1", meta({ toolApprovalMode: "" }));
-  eq(profiles["tab-1"].toolApprovalMode, "auto", "blank meta payload does not demote explicit auto approval mode to ask");
+  eq(profiles["tab-1"].toolApprovalMode, "yolo", "meta hydration keeps Build full-access");
 }
 
 {

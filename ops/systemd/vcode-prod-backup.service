@@ -1,0 +1,7 @@
+[Unit]
+Description=Vcode production encrypted backup
+ConditionPathExists=/etc/vcode-prod/backup.env
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vcode-prod-backup

@@ -19,7 +19,10 @@ import (
 	"vcode/internal/shellparse"
 )
 
-const ProbeTimeout = 2 * time.Second
+// Startup probes run alongside package indexing, plugin discovery, and model
+// boot. Leave enough headroom for heavily loaded phones and CI hosts; callers
+// that need a tighter bound can set ProbeOptions.Timeout.
+const ProbeTimeout = 15 * time.Second
 
 const probeWaitDelay = time.Second
 
@@ -55,6 +58,7 @@ type ProbeResult struct {
 type ProbeOptions struct {
 	Overrides map[string]string
 	DenyRoots []string
+	Timeout   time.Duration
 }
 
 func DefaultProbes() []string {
@@ -148,7 +152,10 @@ func finishProbe(key string, results []ProbeResult, now time.Time) {
 
 func probeFingerprint(commands []string, opts ProbeOptions) string {
 	var b strings.Builder
-	b.WriteString("v1")
+	b.WriteString("v2")
+	b.WriteByte('\x00')
+	b.WriteString("timeout=")
+	b.WriteString(probeTimeout(opts).String())
 	for _, command := range commands {
 		b.WriteByte('\x00')
 		b.WriteString(strings.TrimSpace(command))
@@ -207,7 +214,7 @@ func runOne(ctx context.Context, command string, opts ProbeOptions) ProbeResult 
 		res.Error = "not trusted"
 		return res
 	}
-	cmdCtx, cancel := context.WithTimeout(ctx, ProbeTimeout)
+	cmdCtx, cancel := context.WithTimeout(ctx, probeTimeout(opts))
 	defer cancel()
 	cmd := exec.CommandContext(cmdCtx, exe, parts[1:]...)
 	if len(probe.Env) > 0 {
@@ -241,6 +248,13 @@ func runOne(ctx context.Context, command string, opts ProbeOptions) ProbeResult 
 	res.Found = true
 	res.Output = firstLine(out)
 	return res
+}
+
+func probeTimeout(opts ProbeOptions) time.Duration {
+	if opts.Timeout > 0 {
+		return opts.Timeout
+	}
+	return ProbeTimeout
 }
 
 func prepareProbeCommand(cmd *exec.Cmd) {

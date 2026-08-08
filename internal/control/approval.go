@@ -278,14 +278,14 @@ func normalizePlanModeReadOnlyCommandPrefix(prefix string) string {
 // --- decision helpers (caller holds a.mu) ---
 
 func (a *approvalManager) bypassAllowsLocked(tool string) bool {
-	if requiresFreshApprovalTool(tool) && tool != planApprovalTool {
+	if requiresFreshApprovalTool(tool) {
 		return false
 	}
 	return a.toolApprovalMode == ToolApprovalYolo || a.planAutoApprove
 }
 
 func (a *approvalManager) autoApprovalWouldAllowLocked(tool, subject string) bool {
-	if requiresFreshApprovalTool(tool) && tool != planApprovalTool {
+	if requiresFreshApprovalTool(tool) {
 		return false
 	}
 	policy := a.policy
@@ -294,7 +294,7 @@ func (a *approvalManager) autoApprovalWouldAllowLocked(tool, subject string) boo
 }
 
 func (a *approvalManager) sessionGrantAllowsLocked(tool, subject string) bool {
-	if requiresFreshApprovalTool(tool) && tool != planApprovalTool {
+	if requiresFreshApprovalTool(tool) {
 		return false
 	}
 	for rule := range a.granted {
@@ -336,12 +336,12 @@ func normalizeToolApprovalMode(mode string) string {
 	}
 }
 
-// RequiresFreshHumanApprovalTool reports whether a tool must be answered by a
-// human each time, not by YOLO/auto approval, session grants, Guardian, or a
-// non-interactive nil approver.
+// RequiresFreshHumanApprovalTool reports decisions that cannot be absorbed by
+// Build's full-access posture. Only leaving Plan qualifies: memory writes are
+// ordinary Build operations in the two-mode product.
 func RequiresFreshHumanApprovalTool(tool string) bool {
 	switch tool {
-	case planApprovalTool, memoryRememberTool, memoryForgetTool:
+	case planApprovalTool:
 		return true
 	default:
 		return false

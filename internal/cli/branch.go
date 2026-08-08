@@ -104,8 +104,8 @@ func (m *chatTUI) replayActiveBranch(title string) {
 	m.pendingApproval = nil
 	m.bubblePending = false
 	m.turnDiscarded = false
-	m.planMode = true
-	m.ctrl.SetPlanMode(true)
+	m.planMode = false
+	m.ctrl.SetPlanMode(false)
 	m.sessionSwitch = true
 
 	// Discard the previous session's transcript so the viewport only shows the

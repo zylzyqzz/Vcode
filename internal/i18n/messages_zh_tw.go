@@ -47,7 +47,7 @@ var ChineseTraditional = Messages{
 	ChatStatusCancellingFmt:                "%s 正在停止… (%d 秒 · Ctrl+C 退出)",
 	ChatStatusIdle:                         "就緒",
 	ChatStatusYoloIdle:                     "已跳過核准",
-	ChatStatusCycleHint:                    "tab 循環 build/plan/goal; shift+tab 切換 省 token/完整 token",
+	ChatStatusCycleHint:                    "tab 切換 Build/Plan",
 	ChatStatusCacheNowFmt:                  "緩存: 本次 %s",
 	ChatStatusCacheAvgFmt:                  "總命中率 %s",
 	ChatStatusPlanApproval:                 "Enter/y 核准並執行 · n/Esc 繼續規劃 · PgUp/PgDn 捲動",

@@ -1,0 +1,20 @@
+[Unit]
+Description=Vcode production coding runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/vcode-prod
+Environment=VCODE_HOME=/etc/vcode-prod
+ExecStart=/opt/vcode-prod/bin/vcode-start.sh
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+PrivateTmp=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

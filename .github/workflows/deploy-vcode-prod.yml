@@ -1,0 +1,71 @@
+name: Deploy Vcode production runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Protected master commit or tag to deploy"
+        required: true
+        default: "master"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vcode-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: build, verify, and deploy Linux runtime
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify root runtime
+        run: |
+          go vet ./...
+          go test -race ./...
+      - name: Build immutable Linux artifact
+        id: artifact
+        run: |
+          set -euo pipefail
+          commit="$(git rev-parse HEAD)"
+          mkdir -p release
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags "-s -w -X main.version=$commit" \
+            -o release/vcode-linux-amd64 ./cmd/vcode
+          sha256sum release/vcode-linux-amd64 | tee release/vcode-linux-amd64.sha256
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - name: Configure deploy SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.VCODE_PROD_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VCODE_PROD_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Stage and activate
+        env:
+          DEPLOY_HOST: ${{ secrets.VCODE_PROD_HOST }}
+          DEPLOY_USER: ${{ secrets.VCODE_PROD_USER }}
+          COMMIT: ${{ steps.artifact.outputs.commit }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes release/vcode-linux-amd64 release/vcode-linux-amd64.sha256 "$DEPLOY_USER@$DEPLOY_HOST:/tmp/"
+          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes scripts/deploy-vcode-prod.sh "$DEPLOY_USER@$DEPLOY_HOST:/tmp/deploy-vcode-prod.sh"
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "sudo /bin/bash /tmp/deploy-vcode-prod.sh '$COMMIT' /tmp/vcode-linux-amd64 /tmp/vcode-linux-amd64.sha256"

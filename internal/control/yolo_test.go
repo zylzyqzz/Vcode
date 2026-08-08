@@ -125,7 +125,7 @@ func TestRequestApprovalHonorsAutoApproveTools(t *testing.T) {
 	}
 }
 
-func TestMemoryApprovalIgnoresAutoApproveTools(t *testing.T) {
+func TestMemoryApprovalUsesBuildFullAccess(t *testing.T) {
 	approvalRequests := make(chan event.Approval, 1)
 	c := New(Options{
 		Sink: event.FuncSink(func(e event.Event) {
@@ -147,34 +147,20 @@ func TestMemoryApprovalIgnoresAutoApproveTools(t *testing.T) {
 		done <- allow
 	}()
 
-	var approval event.Approval
-	select {
-	case approval = <-approvalRequests:
-	case <-time.After(2 * time.Second):
-		t.Fatal("memory approval request was not emitted under tool auto-approval")
-	}
-	if approval.Tool != "remember" {
-		t.Fatalf("approval tool = %q, want remember", approval.Tool)
-	}
-
-	select {
-	case err := <-errs:
-		t.Fatalf("requestApproval: %v", err)
-	case allow := <-done:
-		t.Fatalf("memory approval must wait for manual approval, got allow=%v", allow)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	c.Approve(approval.ID, true, true, true)
 	select {
 	case err := <-errs:
 		t.Fatalf("requestApproval: %v", err)
 	case allow := <-done:
 		if !allow {
-			t.Fatal("manual approval should allow memory write")
+			t.Fatal("Build full access should allow memory write")
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("memory approval stayed blocked after Approve")
+		t.Fatal("Build memory approval did not resolve")
+	}
+	select {
+	case approval := <-approvalRequests:
+		t.Fatalf("Build memory write unexpectedly prompted: %+v", approval)
+	default:
 	}
 }
 
@@ -598,7 +584,7 @@ func TestSetAutoApproveToolsDoesNotDrainPendingPlanModeReadOnlyCommandTrust(t *t
 	}
 }
 
-func TestSetAutoApproveToolsDoesNotDrainPendingMemoryApproval(t *testing.T) {
+func TestSetAutoApproveToolsDrainsPendingMemoryApproval(t *testing.T) {
 	approvalRequests := make(chan event.Approval, 1)
 	c := New(Options{
 		Sink: event.FuncSink(func(e event.Event) {
@@ -632,21 +618,13 @@ func TestSetAutoApproveToolsDoesNotDrainPendingMemoryApproval(t *testing.T) {
 	case err := <-errs:
 		t.Fatalf("requestApproval: %v", err)
 	case allow := <-done:
-		t.Fatalf("SetAutoApproveTools must not auto-answer pending memory approval; got allow=%v", allow)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	c.Approve(approval.ID, true, true, true)
-	select {
-	case err := <-errs:
-		t.Fatalf("requestApproval: %v", err)
-	case allow := <-done:
 		if !allow {
-			t.Fatal("manual approval should allow memory archive")
+			t.Fatal("Build full access should allow memory archive")
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("memory approval stayed blocked after Approve")
+		t.Fatal("pending memory approval was not drained")
 	}
+	_ = approval
 }
 
 // TestSetModeYoloDrainsPendingApproval is the SetMode-path twin of the

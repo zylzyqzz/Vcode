@@ -4,8 +4,8 @@ How Vcode ships, who can ship what, and the canary-before-stable flow.
 
 ## Branch model: trunk + tags
 
-- **`main-v2`** is the single development line (the v2 / 1.x trunk). Every PR merges here.
-- **Production is a tag, not a branch.** A release is a tagged snapshot of `main-v2`:
+- **`master`** is the single development line (the v2 / 1.x trunk). Every PR merges here.
+- **Production is a tag, not a branch.** A release is a tagged snapshot of `master`:
   `v1.4.0` (CLI), `npm-v1.4.0` (npm), `desktop-v1.4.0` (desktop).
 - **`v1`** is the archived 1.0/legacy line — maintenance only.
 - **Hotfix** an already-released version by branching from its tag, fixing, and tagging again.
@@ -42,14 +42,14 @@ the `release` environment deployment.
 
 ## The release loop
 
-1. **Develop** — PRs land on `main-v2` (branch auto-deletes on merge).
+1. **Develop** — PRs land on `master` (branch auto-deletes on merge).
 2. **Cut a canary** before the intended release (e.g. heading for `1.4.0`):
    - Desktop: Actions → **Release desktop** → `channel: canary`, `base_version: 1.4.0`
    - CLI: Actions → **Release npm** → `base_version: 1.4.0`
    - Publishes `1.4.0-canary.N` to the desktop R2 `canary/` pointer (no GitHub release) and npm `@canary`.
 3. **Test** — testers install `Vcode@canary` (CLI) or grab the desktop canary
    build from its R2 link, and report bugs.
-4. **Fix** on `main-v2` via PRs; re-cut the canary as needed (`canary.N` bumps).
+4. **Fix** on `master` via PRs; re-cut the canary as needed (`canary.N` bumps).
 5. **Ship stable** when the canary is clean — push the three tags:
    ```sh
    git tag v1.4.0         && git push origin v1.4.0          # CLI binaries + Homebrew

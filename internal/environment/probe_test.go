@@ -162,7 +162,10 @@ func TestRunProbesReportsTimeout(t *testing.T) {
 		t.Fatalf("write tool: %v", err)
 	}
 
-	results := RunProbesWithOverrides(context.Background(), []string{"slowtool --version"}, map[string]string{"slowtool": toolPath})
+	results := RunProbesWithOptions(context.Background(), []string{"slowtool --version"}, ProbeOptions{
+		Overrides: map[string]string{"slowtool": toolPath},
+		Timeout:   100 * time.Millisecond,
+	})
 	if len(results) != 1 {
 		t.Fatalf("results len = %d, want 1", len(results))
 	}
