@@ -56,9 +56,9 @@ jobs:
           python-version: '3.12'
 
       - name: Build harness + fallback agent from the default branch
-        # Harness (e2ebench) and suite always come from main-v2 so a PR can't weaken
+        # Harness (e2ebench) and suite always come from master so a PR can't weaken
         # its own grader or tests. The agent is rebuilt from the PR head below; this
-        # main-v2 build is only the fallback for heads that predate `run --metrics`.
+        # master build is only the fallback for heads that predate `run --metrics`.
         run: |
           go build -o "$RUNNER_TEMP/vcode-base" ./cmd/vcode
           go build -o "$RUNNER_TEMP/e2ebench" ./cmd/e2ebench
@@ -76,13 +76,13 @@ jobs:
           git checkout -q --detach "$SHA"
 
       - name: Build the agent from the PR head
-        # The whole point of the bot is to drive the PR's code, not main-v2's. Fall
-        # back to the main-v2 build only when the PR head can't yield a
+        # The whole point of the bot is to drive the PR's code, not master's. Fall
+        # back to the master build only when the PR head can't yield a
         # run --metrics-capable binary (build break or predates the flag).
         id: agent
         run: |
           bin="$RUNNER_TEMP/vcode-base"
-          src="main-v2 fallback (PR head lacks run --metrics)"
+          src="master fallback (PR head lacks run --metrics)"
           if go build -o "$RUNNER_TEMP/vcode-pr" ./cmd/vcode \
             && "$RUNNER_TEMP/vcode-pr" run -h 2>&1 | grep -q -- '-metrics'; then
             bin="$RUNNER_TEMP/vcode-pr"

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main-v2]
+    branches: [master]
   pull_request:
-    branches: [main-v2]
+    branches: [master]
 
 permissions:
   contents: read
@@ -131,6 +131,7 @@ jobs:
         run: |
           wails generate module
           pnpm --dir frontend install --frozen-lockfile
+          pnpm --dir frontend audit --prod --audit-level=moderate
           pnpm --dir frontend build
 
       - name: vet

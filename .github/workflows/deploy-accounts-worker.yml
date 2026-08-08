@@ -2,7 +2,7 @@ name: Deploy accounts worker
 
 on:
   push:
-    branches: [main-v2]
+    branches: [master]
     paths:
       - 'workers/accounts/**'
       - '.github/workflows/deploy-accounts-worker.yml'

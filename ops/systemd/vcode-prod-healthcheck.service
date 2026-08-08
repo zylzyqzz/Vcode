@@ -1,0 +1,7 @@
+[Unit]
+Description=Vcode production health check
+After=network-online.target vcode-prod.service nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vcode-prod-healthcheck
