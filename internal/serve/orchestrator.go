@@ -93,7 +93,7 @@ func (s *Server) runPipeline(id, goal string) {
 		result = verifyTask()
 	}
 	if result.Status != verify.Verified {
-		s.finishPipeline(id, TaskPartial, "verification_failed", result.Error())
+		s.finishPipeline(id, TaskPartial, verificationErrorClass(result), result.Error())
 		return
 	}
 	if err := runStage("Reviewer", "请只读检查当前 Diff、越界修改和回归风险。确认验证证据充分后，用中文给出简短结论，不要修改文件。", true); err != nil {
@@ -106,7 +106,7 @@ func (s *Server) runPipeline(id, goal string) {
 	if result.Status == verify.Verified {
 		s.finishPipeline(id, TaskCompleted, "", "")
 	} else {
-		s.finishPipeline(id, TaskPartial, "verification_failed", result.Error())
+		s.finishPipeline(id, TaskPartial, verificationErrorClass(result), result.Error())
 	}
 }
 

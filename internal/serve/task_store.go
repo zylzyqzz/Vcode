@@ -95,6 +95,16 @@ func terminalTaskStatus(status TaskStatus) bool {
 	}
 }
 
+// verificationErrorClass keeps an unavailable verifier distinct from an
+// actual failed check. A conversational turn or a workspace without a
+// recognized project manifest is not the same thing as a test failure.
+func verificationErrorClass(result verify.Result) string {
+	if result.Status == verify.Unverified && strings.TrimSpace(result.Skipped) != "" {
+		return "verification_unavailable"
+	}
+	return "verification_failed"
+}
+
 func newTaskStore(sessionDir string) *taskStore {
 	return &taskStore{root: filepath.Join(sessionDir, ".tasks")}
 }

@@ -1382,7 +1382,16 @@ function handleWireEvent(e){
     setRunning(false);stopRemotePoll();
     appendTerminalResponse();
     const reason=String(e.error||e.outcome||'UNVERIFIED').trim();
-    log.appendChild(el('div','notice notice--warn','任务未验证完成 · '+reason));scrollDown();
+    const errorClass=String(e.error_class||'');
+    const skipped=String(e.verification_skipped||'').trim();
+    const modified=Array.isArray(e.modified_files)&&e.modified_files.length>0;
+    if(errorClass==='verification_unavailable'||skipped==='no supported project verification command was found'){
+      const text=modified?'代码已修改 · 未找到可用的项目验证命令':'本次已完成回复 · 未进行代码修改';
+      log.appendChild(el('div','notice',text));
+    }else{
+      log.appendChild(el('div','notice notice--warn','任务未验证完成 · '+reason));
+    }
+    scrollDown();
     return;
   }
   if(e&&e.type==='task_failed'){

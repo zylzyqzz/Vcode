@@ -704,20 +704,23 @@ func (s *Server) finishTask(id string) {
 		if result.Status == verify.Verified {
 			_, _ = s.tasks.complete(id)
 		} else {
-			_ = s.tasks.update(id, TaskPartial, "verification_failed", result.Error())
+			_ = s.tasks.update(id, TaskPartial, verificationErrorClass(result), result.Error())
 		}
 	}
 	if record, err := s.tasks.record(id); err == nil && terminalTaskStatus(record.Status) {
 		kind := taskLifecycleKind(record.Status)
 		s.bc.EmitTaskLifecycle(id, kind, map[string]any{
-			"status":         string(record.Status),
-			"outcome":        record.Outcome,
-			"final_response": record.FinalResponse,
+			"status":               string(record.Status),
+			"outcome":              record.Outcome,
+			"error_class":          record.ErrorClass,
+			"final_response":       record.FinalResponse,
+			"modified_files":       record.ModifiedFiles,
+			"verification_status":  record.VerificationStatus,
+			"verification_skipped": record.VerificationSkipped,
 			// Keep output for older clients. New clients must render this as
 			// assistant content, never as an error fallback.
-			"output":      record.FinalResponse,
-			"error_class": record.ErrorClass,
-			"error":       record.Error,
+			"output": record.FinalResponse,
+			"error":  record.Error,
 		})
 	}
 	s.taskMu.Lock()
