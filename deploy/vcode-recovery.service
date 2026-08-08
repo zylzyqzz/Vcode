@@ -1,0 +1,20 @@
+[Unit]
+Description=Vcode recovery runtime (standby)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/vcode
+Environment=VCODE_HOME=/etc/vcode-recovery
+ExecStart=/opt/vcode-recovery/bin/vcode-start.sh
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+PrivateTmp=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
