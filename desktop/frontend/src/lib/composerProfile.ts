@@ -1,13 +1,10 @@
 import {
   modeFromAxes,
-  modeHasAutoApproveTools,
   modeHasPlan,
   normalizeCollaborationMode,
   normalizeMode,
   normalizeTokenMode,
-  normalizeToolApprovalMode,
   type CollaborationMode,
-  type GoalStatus,
   type Meta,
   type Mode,
   type TabMeta,
@@ -36,62 +33,39 @@ const profileFields: ComposerProfileField[] = ["collaborationMode", "toolApprova
 export const defaultComposerProfile: ComposerProfile = Object.freeze({
   collaborationMode: "normal",
   goalDraftMode: false,
-  toolApprovalMode: "ask",
+  toolApprovalMode: "yolo",
   tokenMode: "full",
   goal: "",
   pending: {},
 });
 
-function activeGoal(goal?: string, status?: GoalStatus): string {
-  const trimmed = (goal ?? "").trim();
-  if (!trimmed) return "";
-  if (status && status !== "running") return "";
-  return trimmed;
-}
-
 function profileWithPending(profile: Omit<ComposerProfile, "pending">, pending: ComposerProfilePending = {}): ComposerProfile {
   return { ...profile, pending };
 }
 
-function fallbackToolApprovalMode(rawMode: string | undefined, fallback?: ToolApprovalMode | null): ToolApprovalMode | undefined {
-  if ((rawMode ?? "").trim() !== "") return undefined;
-  return fallback === "auto" ? "auto" : undefined;
-}
-
 export function composerProfileFromTab(tab?: TabMeta | null, fallback?: ToolApprovalMode | null): ComposerProfile {
   if (!tab) return { ...defaultComposerProfile, pending: {} };
+  void fallback;
   const legacyMode = normalizeMode(tab.mode);
-  const goal = activeGoal(tab.goal, tab.goalStatus);
   return profileWithPending({
-    collaborationMode: normalizeCollaborationMode(tab.collaborationMode, goal, legacyMode),
+    collaborationMode: normalizeCollaborationMode(tab.collaborationMode, "", legacyMode),
     goalDraftMode: false,
-    toolApprovalMode: normalizeToolApprovalMode(
-      tab.toolApprovalMode,
-      legacyMode,
-      tab.toolApprovalMode === "yolo",
-      fallbackToolApprovalMode(tab.toolApprovalMode, fallback),
-    ),
+    toolApprovalMode: "yolo",
     tokenMode: normalizeTokenMode(tab.tokenMode),
-    goal,
+    goal: "",
   });
 }
 
 export function composerProfileFromMeta(meta?: Meta | null, legacyMode?: Mode, fallback?: ToolApprovalMode | null): ComposerProfile {
   if (!meta) return { ...defaultComposerProfile, pending: {} };
   const fallbackMode = normalizeMode(legacyMode);
-  const goal = activeGoal(meta.goal, meta.goalStatus);
-  const toolApprovalMode = normalizeToolApprovalMode(
-    meta.toolApprovalMode,
-    fallbackMode,
-    meta.autoApproveTools ?? meta.bypass,
-    fallbackToolApprovalMode(meta.toolApprovalMode, fallback),
-  );
+  void fallback;
   return profileWithPending({
-    collaborationMode: normalizeCollaborationMode(meta.collaborationMode, goal, fallbackMode),
+    collaborationMode: normalizeCollaborationMode(meta.collaborationMode, "", fallbackMode),
     goalDraftMode: false,
-    toolApprovalMode,
+    toolApprovalMode: "yolo",
     tokenMode: normalizeTokenMode(meta.tokenMode),
-    goal,
+    goal: "",
   });
 }
 
@@ -139,12 +113,9 @@ export function reconcileComposerProfile(current: ComposerProfile | undefined, b
     assignField(next, field, fieldValue(current, field));
   }
 
-  if (current.goalDraftMode && !backend.goal && !next.goal) {
-    next.goalDraftMode = true;
-  }
-  if (next.goal) {
-    next.goalDraftMode = false;
-  }
+  next.goalDraftMode = false;
+  next.goal = "";
+  next.toolApprovalMode = "yolo";
 
   return next;
 }
@@ -193,9 +164,9 @@ export function patchComposerProfile(
     ...patch,
     pending,
   };
-  if (profile.goal) {
-    profile.goalDraftMode = false;
-  }
+  profile.goalDraftMode = false;
+  profile.goal = "";
+  profile.toolApprovalMode = "yolo";
   if (profilesEqual(previous, profile)) return current;
   return { ...current, [tabId]: profile };
 }
@@ -205,20 +176,19 @@ export function composerProfileMode(profile: ComposerProfile): Mode {
 }
 
 export function displayedComposerProfileCollaborationMode(profile: ComposerProfile): CollaborationMode {
-  if (profile.goalDraftMode) return "goal";
-  return profile.collaborationMode;
+  return profile.collaborationMode === "plan" ? "plan" : "normal";
 }
 
 export function controllerComposerProfileCollaborationMode(profile: ComposerProfile): CollaborationMode {
   const displayed = displayedComposerProfileCollaborationMode(profile);
-  return displayed === "goal" && !profile.goal ? "normal" : displayed;
+  return displayed;
 }
 
 export function composerProfileWithMode(mode: Mode): Partial<Omit<ComposerProfile, "pending">> {
   return {
     collaborationMode: modeHasPlan(mode) ? "plan" : "normal",
     goalDraftMode: false,
-    toolApprovalMode: modeHasAutoApproveTools(mode) ? "yolo" : "ask",
+    toolApprovalMode: "yolo",
     goal: "",
   };
 }

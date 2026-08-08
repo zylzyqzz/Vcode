@@ -97,11 +97,11 @@ func TestIdleStatuslineIsCompact(t *testing.T) {
 
 	content := renderStatuslineView(t, false)
 	plain := bottomStatusPlain(content)
-	if !strings.Contains(plain, "Auto") || !strings.Contains(plain, "ready") {
+	if !strings.Contains(plain, "Build") || !strings.Contains(plain, "ready") {
 		t.Fatalf("idle status line missing mode status:\n%s", plain)
 	}
-	if !strings.Contains(plain, "(shift+tab toggles plan · ctrl+y yolo)") {
-		t.Fatalf("idle status line missing plan-toggle hint:\n%s", plain)
+	if !strings.Contains(plain, "(tab Build/Plan)") {
+		t.Fatalf("idle status line missing mode hint:\n%s", plain)
 	}
 	for _, old := range []string{"Shift-Tab", "Ctrl-O", "Ctrl-D", "Enter sends", "Esc clears/exits state", "PgUp/PgDn"} {
 		if strings.Contains(plain, old) {
@@ -116,19 +116,19 @@ func TestIdleStatuslineIsCompact(t *testing.T) {
 	}
 }
 
-func TestYoloStatuslineUsesDangerPill(t *testing.T) {
+func TestLegacyYoloStateRendersAsBuild(t *testing.T) {
 	i18n.DetectLanguage("en")
 
 	content := renderStatuslineView(t, true)
 	plain := bottomStatusPlain(content)
-	if !strings.Contains(plain, "YOLO") || !strings.Contains(plain, "approvals skipped") || !strings.Contains(plain, "(shift+tab toggles plan · ctrl+y yolo)") {
-		t.Fatalf("YOLO status line missing warning text:\n%s", plain)
+	if !strings.Contains(plain, "Build") || !strings.Contains(plain, "ready") || !strings.Contains(plain, "(tab Build/Plan)") {
+		t.Fatalf("full-access Build status line missing text:\n%s", plain)
 	}
-	if strings.Contains(plain, "[YOLO]") {
-		t.Fatalf("YOLO status line should use a pill label, not bracketed tag:\n%s", plain)
+	if strings.Contains(plain, "YOLO") {
+		t.Fatalf("legacy YOLO label should not be exposed:\n%s", plain)
 	}
-	if !strings.Contains(content, "\x1b[48;2;229;72;77m") {
-		t.Fatalf("YOLO status line should use danger pill background, got:\n%q", content)
+	if !strings.Contains(content, "\x1b[48;2;245;158;11m") {
+		t.Fatalf("Build status line should use the Build pill background, got:\n%q", content)
 	}
 }
 
@@ -137,7 +137,7 @@ func TestPlanStatuslineUsesBluePill(t *testing.T) {
 
 	content := renderPlanStatuslineView(t)
 	plain := bottomStatusPlain(content)
-	if !strings.Contains(plain, "Plan") || !strings.Contains(plain, "ready") || !strings.Contains(plain, "(shift+tab toggles plan · ctrl+y yolo)") {
+	if !strings.Contains(plain, "Plan") || !strings.Contains(plain, "ready") || !strings.Contains(plain, "(tab Build/Plan)") {
 		t.Fatalf("plan status line missing mode status:\n%s", plain)
 	}
 	if !strings.Contains(content, "\x1b[48;2;37;99;235m") {
@@ -151,10 +151,10 @@ func TestStatuslineCycleHintFollowsLanguage(t *testing.T) {
 
 	content := renderStatuslineView(t, false)
 	plain := bottomStatusPlain(content)
-	if !strings.Contains(plain, "Auto") || !strings.Contains(plain, "就绪") || !strings.Contains(plain, "(shift+tab 切换计划 · ctrl+y yolo)") {
-		t.Fatalf("localized plan-toggle hint missing:\n%s", plain)
+	if !strings.Contains(plain, "Build") || !strings.Contains(plain, "就绪") || !strings.Contains(plain, "(tab 切换 Build/Plan)") {
+		t.Fatalf("localized mode hint missing:\n%s", plain)
 	}
-	if strings.Contains(plain, "ready") || strings.Contains(plain, "shift+tab toggles plan · ctrl+y yolo") {
+	if strings.Contains(plain, "ready") || strings.Contains(plain, "tab Build/Plan") {
 		t.Fatalf("localized status line should not fall back to English:\n%s", plain)
 	}
 }
@@ -164,8 +164,8 @@ func TestDesktopShortcutStatuslineUsesPlanToggleHint(t *testing.T) {
 
 	content := renderStatuslineViewWithShortcutLayout(t, "desktop")
 	plain := bottomStatusPlain(content)
-	if !strings.Contains(plain, "Ask") || !strings.Contains(plain, "(shift+tab toggles plan · ctrl+y yolo)") {
-		t.Fatalf("desktop shortcut status line missing unified plan-toggle hint:\n%s", plain)
+	if !strings.Contains(plain, "Build") || !strings.Contains(plain, "(tab Build/Plan)") {
+		t.Fatalf("desktop shortcut status line missing unified mode hint:\n%s", plain)
 	}
 	if strings.Contains(plain, "ask/auto/plan") {
 		t.Fatalf("desktop shortcut status line should not advertise Ask/Auto/Plan cycling:\n%s", plain)
@@ -210,10 +210,10 @@ func TestStatuslinePutsGitIdentityOnModeRow(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("status block lines = %d, want 2:\n%s", len(lines), strings.Join(lines, "\n"))
 	}
-	if !strings.Contains(lines[0], "effort auto · Vcode@codex/demo (+3 -1 ?2)") {
+	if !strings.Contains(lines[0], "effort auto · vcode@codex/demo (+3 -1 ?2)") {
 		t.Fatalf("mode row should include effort before git identity:\n%s", strings.Join(lines, "\n"))
 	}
-	if strings.Contains(lines[1], "Vcode@codex/demo") {
+	if strings.Contains(lines[1], "vcode@codex/demo") {
 		t.Fatalf("data row should not include git identity:\n%s", strings.Join(lines, "\n"))
 	}
 	if !strings.Contains(lines[1], "deepseek-v4-flash") || strings.Contains(lines[1], "effort auto") {

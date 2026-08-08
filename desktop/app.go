@@ -1124,16 +1124,15 @@ func (a *App) setPlanModeForTab(tabID string, on bool) {
 	a.SetModeForTab(tabID, tabModeFromAxes(on, tabModeHasAutoApproveTools(current)))
 }
 
-// SetMode applies a composer gating mode ("plan" | "yolo" | "plan-yolo" |
-// anything else =
-// normal) in one call, so a turn submitted right after the switch can't race a
-// half-applied plan/tool-auto-approval pair.
+// SetMode applies the two-mode desktop contract. Build is full-access execution;
+// Plan is read-only planning. Legacy yolo/goal inputs collapse to Build.
 func (a *App) SetMode(mode string) {
 	a.SetModeForTab("", mode)
 }
 
 func (a *App) SetModeForTab(tabID, mode string) {
-	normalized := normalizeTabMode(mode)
+	plan := tabModeHasPlan(mode)
+	normalized := tabModeFromAxes(plan, true)
 	a.mu.Lock()
 	tab := a.tabByIDLocked(tabID)
 	if tab == nil {
@@ -1141,18 +1140,17 @@ func (a *App) SetModeForTab(tabID, mode string) {
 		return
 	}
 	tab.mode = normalized
-	tab.toolApprovalMode = normalizeToolApprovalMode(tab.toolApprovalMode)
-	if tabModeHasAutoApproveTools(normalized) {
-		tab.toolApprovalMode = control.ToolApprovalYolo
-	} else if tab.toolApprovalMode == control.ToolApprovalYolo {
-		tab.toolApprovalMode = control.ToolApprovalAsk
-	}
+	tab.toolApprovalMode = control.ToolApprovalYolo
+	tab.goal = ""
 	ctrl := tab.Ctrl
 	approvalMode := tab.toolApprovalMode
 	tabIDForSave := tab.ID
 	a.mu.Unlock()
 	applyTabModeToController(ctrl, normalized)
 	applyTabToolApprovalModeToController(ctrl, approvalMode)
+	if ctrl != nil {
+		ctrl.ClearGoal()
+	}
 	a.mu.Lock()
 	if a.tabs[tabIDForSave] == tab {
 		a.saveTabsLocked()
@@ -1164,23 +1162,18 @@ func applyTabModeToController(ctrl control.SessionAPI, mode string) {
 	if ctrl == nil {
 		return
 	}
-	switch normalizeTabMode(mode) {
-	case "plan":
-		ctrl.SetMode(true, false)
-	case "yolo":
-		ctrl.SetMode(false, true)
-	case "plan-yolo":
+	if tabModeHasPlan(mode) {
 		ctrl.SetMode(true, true)
-	default:
-		ctrl.SetMode(false, false)
+		return
 	}
+	ctrl.SetMode(false, true)
 }
 
 func applyTabToolApprovalModeToController(ctrl control.SessionAPI, mode string) {
 	if ctrl == nil {
 		return
 	}
-	ctrl.SetToolApprovalMode(normalizeToolApprovalMode(mode))
+	ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
 }
 
 func (a *App) currentModeForTab(tabID string) string {
@@ -1198,8 +1191,6 @@ func normalizeCollaborationMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "plan":
 		return "plan"
-	case "goal":
-		return "goal"
 	default:
 		return "normal"
 	}
@@ -1217,25 +1208,22 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 		a.mu.Unlock()
 		return
 	}
-	approvalMode := currentTabToolApprovalMode(tab)
+	tab.toolApprovalMode = control.ToolApprovalYolo
 	switch mode {
 	case "plan":
-		tab.mode = tabModeFromAxes(true, approvalMode == control.ToolApprovalYolo)
-		tab.goal = ""
-	case "goal":
-		tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
+		tab.mode = tabModeFromAxes(true, true)
 	default:
-		tab.mode = tabModeFromAxes(false, approvalMode == control.ToolApprovalYolo)
-		tab.goal = ""
+		tab.mode = tabModeFromAxes(false, true)
 	}
+	tab.goal = ""
 	ctrl := tab.Ctrl
-	goal := tab.goal
 	plan := tabModeHasPlan(tab.mode)
 	tabIDForSave := tab.ID
 	a.mu.Unlock()
 	if ctrl != nil {
 		ctrl.SetPlanMode(plan)
-		ctrl.SetGoal(goal)
+		ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
+		ctrl.ClearGoal()
 	}
 	a.mu.Lock()
 	if a.tabs[tabIDForSave] == tab {
@@ -4939,7 +4927,9 @@ func (a *App) SetGoal(goal string) {
 }
 
 func (a *App) SetGoalForTab(tabID, goal string) {
-	goal = strings.TrimSpace(goal)
+	// Compatibility binding for restored tabs and older frontends. Goal mode was
+	// removed; any request simply clears stale Goal state and keeps Build/Plan.
+	goal = ""
 	a.mu.Lock()
 	tab := a.tabByIDLocked(tabID)
 	if tab == nil {
@@ -4947,16 +4937,15 @@ func (a *App) SetGoalForTab(tabID, goal string) {
 		return
 	}
 	tab.goal = goal
-	if goal != "" {
-		tab.mode = tabModeFromAxes(false, currentTabToolApprovalMode(tab) == control.ToolApprovalYolo)
-	}
+	tab.toolApprovalMode = control.ToolApprovalYolo
 	ctrl := tab.Ctrl
 	plan := tabModeHasPlan(tab.mode)
 	tabIDForSave := tab.ID
 	a.mu.Unlock()
 	if ctrl != nil {
 		ctrl.SetPlanMode(plan)
-		ctrl.SetGoal(goal)
+		ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
+		ctrl.ClearGoal()
 	}
 	a.mu.Lock()
 	if a.tabs[tabIDForSave] == tab {
@@ -4973,9 +4962,8 @@ func (a *App) ClearGoalForTab(tabID string) {
 	a.SetGoalForTab(tabID, "")
 }
 
-// SetAutoApproveTools toggles YOLO/full-access tool auto-approval:
-// approval-gated tool calls run without asking, while ask questions and plan
-// approvals still wait for the user. Runtime-only — not written to config.
+// SetAutoApproveTools is retained for older bindings. Both values preserve the
+// two-mode contract: Build remains full-access and Plan remains read-only.
 func (a *App) SetAutoApproveTools(on bool) {
 	if on {
 		a.SetToolApprovalModeForTab("", control.ToolApprovalYolo)
@@ -4994,7 +4982,8 @@ func (a *App) SetToolApprovalMode(mode string) {
 }
 
 func (a *App) SetToolApprovalModeForTab(tabID, mode string) {
-	mode = normalizeToolApprovalMode(mode)
+	// Kept as a compatibility binding; Build and Plan both use full access.
+	mode = control.ToolApprovalYolo
 	a.mu.Lock()
 	tab := a.tabByIDLocked(tabID)
 	if tab == nil {
@@ -5035,7 +5024,6 @@ func (a *App) Commands() []CommandInfo {
 		{Name: "effort", Description: i18n.M.CmdEffort, Kind: "builtin"},
 		{Name: "memory", Description: i18n.M.CmdMemory, Kind: "builtin"},
 		{Name: "migrate", Description: i18n.M.CmdMigrate, Kind: "builtin"},
-		{Name: "goal", Description: i18n.M.CmdGoal, Kind: "builtin"},
 		{Name: "remember", Description: i18n.M.CmdRemember, Kind: "builtin"},
 		{Name: "mcp", Description: i18n.M.CmdMcp, Kind: "builtin"},
 		{Name: "hooks", Description: i18n.M.CmdHooks, Kind: "builtin"},

@@ -313,7 +313,7 @@ func TestSaveTabsPersistsGoalAndToolApprovalMode(t *testing.T) {
 	}
 }
 
-func TestCollaborationModesPreserveToolApprovalMode(t *testing.T) {
+func TestCollaborationModesUseFullAccessAndClearLegacyGoal(t *testing.T) {
 	isolateDesktopUserDirs(t)
 
 	app := NewApp()
@@ -325,14 +325,14 @@ func TestCollaborationModesPreserveToolApprovalMode(t *testing.T) {
 
 	app.SetToolApprovalModeForTab(tab.ID, control.ToolApprovalAuto)
 	app.SetGoalForTab(tab.ID, "finish the approval redesign")
-	if got := currentTabCollaborationMode(tab); got != "goal" {
-		t.Fatalf("collaboration mode = %q, want goal", got)
+	if got := currentTabCollaborationMode(tab); got != "normal" {
+		t.Fatalf("legacy Goal should collapse to Build, got %q", got)
 	}
 	if tab.Ctrl.PlanMode() {
 		t.Fatal("goal mode should leave plan mode off")
 	}
-	if got := tab.Ctrl.ToolApprovalMode(); got != control.ToolApprovalAuto {
-		t.Fatalf("tool approval after goal = %q, want auto", got)
+	if got := tab.Ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
+		t.Fatalf("Build approval = %q, want yolo", got)
 	}
 
 	app.SetCollaborationModeForTab(tab.ID, "plan")
@@ -342,8 +342,8 @@ func TestCollaborationModesPreserveToolApprovalMode(t *testing.T) {
 	if got := tab.Ctrl.Goal(); got != "" {
 		t.Fatalf("plan mode should clear goal, got %q", got)
 	}
-	if got := tab.Ctrl.ToolApprovalMode(); got != control.ToolApprovalAuto {
-		t.Fatalf("tool approval after plan = %q, want auto", got)
+	if got := tab.Ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
+		t.Fatalf("tool approval after plan = %q, want yolo", got)
 	}
 
 	app.SetCollaborationModeForTab(tab.ID, "normal")
@@ -353,12 +353,12 @@ func TestCollaborationModesPreserveToolApprovalMode(t *testing.T) {
 	if tab.Ctrl.PlanMode() {
 		t.Fatal("normal mode should leave plan mode off")
 	}
-	if got := tab.Ctrl.ToolApprovalMode(); got != control.ToolApprovalAuto {
-		t.Fatalf("tool approval after normal = %q, want auto", got)
+	if got := tab.Ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
+		t.Fatalf("tool approval after Build = %q, want yolo", got)
 	}
 }
 
-func TestToolApprovalModesPreserveCollaborationMode(t *testing.T) {
+func TestLegacyToolApprovalModesCollapseToFullAccess(t *testing.T) {
 	isolateDesktopUserDirs(t)
 
 	app := NewApp()
@@ -374,23 +374,23 @@ func TestToolApprovalModesPreserveCollaborationMode(t *testing.T) {
 		if got := currentTabCollaborationMode(tab); got != "plan" {
 			t.Fatalf("collaboration after tool mode %q = %q, want plan", mode, got)
 		}
-		if got := tab.Ctrl.ToolApprovalMode(); got != mode {
-			t.Fatalf("tool approval = %q, want %q", got, mode)
+		if got := tab.Ctrl.ToolApprovalMode(); got != control.ToolApprovalYolo {
+			t.Fatalf("legacy tool approval %q resolved to %q, want yolo", mode, got)
 		}
 	}
 
 	app.SetGoalForTab(tab.ID, "ship the goal runner")
 	app.SetToolApprovalModeForTab(tab.ID, control.ToolApprovalAsk)
-	if got := currentTabCollaborationMode(tab); got != "goal" {
-		t.Fatalf("collaboration after ask = %q, want goal", got)
+	if got := currentTabCollaborationMode(tab); got != "plan" {
+		t.Fatalf("legacy Goal should preserve Plan, got %q", got)
 	}
 	app.SetToolApprovalModeForTab(tab.ID, control.ToolApprovalAuto)
-	if got := currentTabCollaborationMode(tab); got != "goal" {
-		t.Fatalf("collaboration after auto = %q, want goal", got)
+	if got := currentTabCollaborationMode(tab); got != "plan" {
+		t.Fatalf("collaboration after auto = %q, want plan", got)
 	}
 	app.SetToolApprovalModeForTab(tab.ID, control.ToolApprovalYolo)
-	if got := currentTabCollaborationMode(tab); got != "goal" {
-		t.Fatalf("collaboration after yolo = %q, want goal", got)
+	if got := currentTabCollaborationMode(tab); got != "plan" {
+		t.Fatalf("collaboration after yolo = %q, want plan", got)
 	}
 }
 
@@ -672,8 +672,8 @@ func TestSetBypassPreservesPlanMode(t *testing.T) {
 	}
 
 	app.SetBypass(false)
-	if !tab.Ctrl.PlanMode() || tab.Ctrl.AutoApproveTools() {
-		t.Fatalf("after SetBypass(false): plan=%v autoApproveTools=%v, want true/false", tab.Ctrl.PlanMode(), tab.Ctrl.AutoApproveTools())
+	if !tab.Ctrl.PlanMode() || !tab.Ctrl.AutoApproveTools() {
+		t.Fatalf("after SetBypass(false): plan=%v autoApproveTools=%v, want true/true", tab.Ctrl.PlanMode(), tab.Ctrl.AutoApproveTools())
 	}
 }
 

@@ -520,9 +520,9 @@ export interface AutoResearchEvidenceView {
 }
 
 export function normalizeCollaborationMode(mode?: string, goal?: string, legacyMode?: Mode): CollaborationMode {
-  if (mode === "plan" || mode === "goal" || mode === "normal") return mode;
+  if (mode === "plan") return "plan";
   if (legacyMode && modeHasPlan(legacyMode)) return "plan";
-  if ((goal ?? "").trim()) return "goal";
+  void goal;
   return "normal";
 }
 

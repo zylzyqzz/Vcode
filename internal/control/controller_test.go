@@ -1296,7 +1296,7 @@ func TestMemoryApprovalRequestShowsRememberPayload(t *testing.T) {
 	}
 }
 
-func TestGuardianCannotAutoAllowFreshHumanApprovalTools(t *testing.T) {
+func TestGuardianCanAutoAllowBuildMemoryTools(t *testing.T) {
 	guardianProv := &recordingProvider{
 		name:    "guardian",
 		streams: [][]provider.Chunk{textTurn(`{"risk_level":"low","user_authorization":"high","outcome":"allow","rationale":"authorized memory update"}`)},
@@ -1327,42 +1327,31 @@ func TestGuardianCannotAutoAllowFreshHumanApprovalTools(t *testing.T) {
 		done <- approveResult{allow: allow, remember: remember, err: err}
 	}()
 
-	var approval event.Approval
 	select {
-	case approval = <-approvals:
+	case got := <-done:
+		if got.err != nil || !got.allow || got.remember {
+			t.Fatalf("Guardian Build allow = (%v,%v,%v)", got.allow, got.remember, got.err)
+		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("memory approval request was not emitted after Guardian allow")
-	}
-	if approval.Tool != "remember" {
-		t.Fatalf("approval tool = %q, want remember", approval.Tool)
+		t.Fatal("Guardian did not auto-allow Build memory tool")
 	}
 	if len(guardianProv.requests) != 1 {
 		t.Fatalf("guardian reviews = %d, want 1", len(guardianProv.requests))
 	}
 	select {
-	case got := <-done:
-		t.Fatalf("Guardian must not auto-allow remember, got %+v", got)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	c.Approve(approval.ID, true, true, true)
-	select {
-	case got := <-done:
-		if got.err != nil || !got.allow || got.remember {
-			t.Fatalf("Approve = (%v,%v,%v), want manual allow without remember", got.allow, got.remember, got.err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("memory approval stayed blocked after manual Approve")
+	case approval := <-approvals:
+		t.Fatalf("Build memory tool unexpectedly prompted: %+v", approval)
+	default:
 	}
 }
 
-func TestHeadlessGateRefusesFreshHumanApprovalTools(t *testing.T) {
+func TestHeadlessGateAllowsBuildMemoryTools(t *testing.T) {
 	gate := NewHeadlessPermissionGate(permission.New("ask", nil, nil, nil))
 
 	for _, toolName := range []string{"remember", "forget"} {
 		allow, reason, err := gate.Check(context.Background(), toolName, json.RawMessage(`{}`), false)
-		if err != nil || allow || !strings.Contains(reason, "fresh human approval") {
-			t.Fatalf("%s headless check = (%v,%q,%v), want fresh-human refusal", toolName, allow, reason, err)
+		if err != nil || !allow || reason != "" {
+			t.Fatalf("%s headless check = (%v,%q,%v), want autonomous allow", toolName, allow, reason, err)
 		}
 	}
 
@@ -1377,10 +1366,10 @@ func TestMemoryApprovalSubjectsAndNotifications(t *testing.T) {
 	if forgetSubject != `Archive memory "wrong-memory"` {
 		t.Fatalf("forget approval subject = %q", forgetSubject)
 	}
-	if got := approvalNotificationText("remember", "Save/update memory with private details"); got != "approval needed: remember" {
+	if got := approvalNotificationText("remember", "Save/update memory with private details"); got != "approval needed: remember Save/update memory with private details" {
 		t.Fatalf("remember notification = %q", got)
 	}
-	if got := approvalNotificationText("forget", `Archive memory "wrong-memory"`); got != "approval needed: forget" {
+	if got := approvalNotificationText("forget", `Archive memory "wrong-memory"`); got != `approval needed: forget Archive memory "wrong-memory"` {
 		t.Fatalf("forget notification = %q", got)
 	}
 	if got := approvalNotificationText("bash", "go test ./..."); got != "approval needed: bash go test ./..." {

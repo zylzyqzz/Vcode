@@ -201,8 +201,8 @@ func TestHeartbeatExecuteTaskPersistsFreshConversationTopicID(t *testing.T) {
 	if len(ctrl.submitted) != 1 || ctrl.submitted[0] != "ping" {
 		t.Fatalf("submitted prompts = %v, want [ping]", ctrl.submitted)
 	}
-	if ctrl.approvalMode != "auto" {
-		t.Fatalf("approval mode = %q, want auto", ctrl.approvalMode)
+	if ctrl.approvalMode != "yolo" {
+		t.Fatalf("approval mode = %q, want yolo", ctrl.approvalMode)
 	}
 	pending := engine.pendingTopics["fresh"]
 	if pending.TopicID != got.TopicID || !pending.Submitted {
