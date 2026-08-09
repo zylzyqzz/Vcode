@@ -2,7 +2,7 @@ module vcode/desktop
 
 go 1.25.0
 
-toolchain go1.26.4
+toolchain go1.26.5
 
 require (
 	aead.dev/minisign v0.3.0
@@ -12,7 +12,7 @@ require (
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/mod v0.37.0
 	golang.org/x/sys v0.46.0
-	golang.org/x/text v0.38.0
+	golang.org/x/text v0.39.0
 	vcode v0.0.0-00010101000000-000000000000
 )
 

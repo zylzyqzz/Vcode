@@ -107,10 +107,6 @@ type chatTUI struct {
 	// flicker when the viewport content is completely rebuilt during a session
 	// switch (#5441). Cleared after one Update cycle.
 	sessionSwitch bool
-	// yoloRestoreToolApprovalMode remembers the Ask/Auto base mode that Ctrl+Y
-	// should restore after a desktop-style YOLO toggle.
-	yoloRestoreToolApprovalMode string
-
 	// pendingInterject queues input typed while a turn runs; each TurnDone
 	// dequeues the front and submits it as the next turn.
 	pendingInterject []string
@@ -3087,76 +3083,8 @@ func (m *chatTUI) cycleMode() {
 	}
 }
 
-// cycleTokenMode toggles token saver mode (full ↔ economy) by rebuilding
-// the controller asynchronously.
-func (m *chatTUI) cycleTokenMode() {
-	if m.ctrl == nil || m.ctrl.Running() {
-		m.notice("wait for the current turn to finish, then retry")
-		return
-	}
-	if m.rebuildWithTokenMode == nil {
-		m.notice("token mode switch unavailable")
-		return
-	}
-
-	newMode := "economy"
-	if m.tokenMode == "economy" {
-		newMode = "full"
-	}
-
-	carried := m.ctrl.History()
-	prevPath := m.ctrl.SessionPath()
-	if err := m.ctrl.Snapshot(); err != nil {
-		m.notice("token mode: snapshot failed: " + err.Error())
-	}
-
-	oldCtrl := m.ctrl
-	build := m.rebuildWithTokenMode
-
-	m.pendingModelSwitch = func() tea.Msg {
-		c, err := build(newMode, carried, prevPath)
-		if err != nil {
-			return tokenModeSwitchMsg{mode: newMode, err: err}
-		}
-		return tokenModeSwitchMsg{
-			ctrl:     c,
-			oldCtrl:  oldCtrl,
-			label:    c.Label(),
-			commands: c.Commands(),
-			skills:   c.Skills(),
-			host:     c.Host(),
-			mode:     newMode,
-		}
-	}
-}
-
-func (m chatTUI) desktopShortcutLayout() bool {
-	return m.cfg != nil && m.cfg.UIShortcutLayout() == "desktop"
-}
-
 func (m chatTUI) cycleHint() string {
 	return i18n.M.ChatStatusCycleHint
-}
-
-func (m *chatTUI) toggleYoloMode() {
-	if m.ctrl == nil {
-		return
-	}
-	if m.ctrl.ToolApprovalMode() == control.ToolApprovalYolo {
-		restore := m.yoloRestoreToolApprovalMode
-		if restore != control.ToolApprovalAuto {
-			restore = control.ToolApprovalAsk
-		}
-		m.ctrl.SetToolApprovalMode(restore)
-		m.yoloRestoreToolApprovalMode = ""
-		return
-	}
-	restore := m.ctrl.ToolApprovalMode()
-	if restore != control.ToolApprovalAuto {
-		restore = control.ToolApprovalAsk
-	}
-	m.yoloRestoreToolApprovalMode = restore
-	m.ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
 }
 
 func (m chatTUI) modeTagText() string {
@@ -3686,37 +3614,6 @@ func (m *chatTUI) runSlashCommand(input string) tea.Cmd {
 			return m.startTurn(sent, input, input)
 		}
 		m.notice(fmt.Sprintf("%s: %s", i18n.M.SlashUnknown, cmd))
-	}
-	return nil
-}
-
-func (m *chatTUI) runGoalSubcommand(input string) tea.Cmd {
-	cmd, ok := control.ParseGoalCommand(input)
-	if !ok {
-		m.echoLocalCommand(input)
-		m.notice(i18n.M.GoalEmpty)
-		return nil
-	}
-	switch cmd.Action {
-	case control.GoalCommandSet:
-		m.planMode = false
-		m.ctrl.SetPlanMode(false)
-		m.ctrl.SetGoalWithResearchMode(cmd.Text, cmd.ResearchMode)
-		m.ctrl.GoalStrict(cmd.Strict)
-		m.notice(fmt.Sprintf(i18n.M.GoalSetFmt, control.ShortGoalForNotice(cmd.Text)))
-		return m.startTurn("Start pursuing the active goal now.", input, input)
-	case control.GoalCommandClear:
-		m.echoLocalCommand(input)
-		m.ctrl.ClearGoal()
-		m.notice(i18n.M.GoalCleared)
-	default:
-		m.echoLocalCommand(input)
-		goal := m.ctrl.Goal()
-		if strings.TrimSpace(goal) == "" {
-			m.notice(i18n.M.GoalEmpty)
-		} else {
-			m.notice(fmt.Sprintf(i18n.M.GoalCurrentFmt, goal))
-		}
 	}
 	return nil
 }

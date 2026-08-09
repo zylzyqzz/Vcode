@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"unicode/utf16"
 
+	"time"
 	"vcode/internal/agent"
 	"vcode/internal/boot"
 	"vcode/internal/config"
@@ -32,7 +33,6 @@ import (
 	"vcode/internal/provider"
 	"vcode/internal/provider/openai"
 	"vcode/internal/serve"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"golang.org/x/term"

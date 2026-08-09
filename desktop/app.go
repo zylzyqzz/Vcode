@@ -4926,17 +4926,16 @@ func (a *App) SetGoal(goal string) {
 	a.SetGoalForTab("", goal)
 }
 
-func (a *App) SetGoalForTab(tabID, goal string) {
+func (a *App) SetGoalForTab(tabID, _ string) {
 	// Compatibility binding for restored tabs and older frontends. Goal mode was
 	// removed; any request simply clears stale Goal state and keeps Build/Plan.
-	goal = ""
 	a.mu.Lock()
 	tab := a.tabByIDLocked(tabID)
 	if tab == nil {
 		a.mu.Unlock()
 		return
 	}
-	tab.goal = goal
+	tab.goal = ""
 	tab.toolApprovalMode = control.ToolApprovalYolo
 	ctrl := tab.Ctrl
 	plan := tabModeHasPlan(tab.mode)
@@ -4981,21 +4980,20 @@ func (a *App) SetToolApprovalMode(mode string) {
 	a.SetToolApprovalModeForTab("", mode)
 }
 
-func (a *App) SetToolApprovalModeForTab(tabID, mode string) {
+func (a *App) SetToolApprovalModeForTab(tabID, _ string) {
 	// Kept as a compatibility binding; Build and Plan both use full access.
-	mode = control.ToolApprovalYolo
 	a.mu.Lock()
 	tab := a.tabByIDLocked(tabID)
 	if tab == nil {
 		a.mu.Unlock()
 		return
 	}
-	tab.toolApprovalMode = mode
-	tab.mode = tabModeFromAxes(tabModeHasPlan(currentTabMode(tab)), mode == control.ToolApprovalYolo)
+	tab.toolApprovalMode = control.ToolApprovalYolo
+	tab.mode = tabModeFromAxes(tabModeHasPlan(currentTabMode(tab)), true)
 	ctrl := tab.Ctrl
 	tabIDForSave := tab.ID
 	a.mu.Unlock()
-	applyTabToolApprovalModeToController(ctrl, mode)
+	applyTabToolApprovalModeToController(ctrl, control.ToolApprovalYolo)
 	a.mu.Lock()
 	if a.tabs[tabIDForSave] == tab {
 		a.saveTabsLocked()

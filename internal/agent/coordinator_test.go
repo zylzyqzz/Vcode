@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"vcode/internal/event"
 	"strings"
 	"testing"
+	"vcode/internal/event"
 
 	"vcode/internal/provider"
 	"vcode/internal/tool"
