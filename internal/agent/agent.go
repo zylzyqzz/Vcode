@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -397,6 +398,14 @@ type Agent struct {
 	// stormSig: a model keeps doing the same successful write, so there is no
 	// error for the failure-only storm breaker to see.
 	repeatSuccessCounts map[string]int
+
+	// readOnlyNoProgressSig / readOnlyNoProgressCount catch a different kind of
+	// token-burning loop: the model repeatedly issues the same read-only call and
+	// receives the exact same result. It is deliberately output-sensitive, so a
+	// file, command, or remote resource that changed between reads remains valid
+	// long-running work. See applyReadOnlyNoProgressGuard.
+	readOnlyNoProgressSig   string
+	readOnlyNoProgressCount int
 }
 
 // KeepPolicy is a bitmask controlling which messages are preserved beyond the
@@ -934,6 +943,7 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 		a.evidence.Reset()
 	}
 	a.repeatSuccessCounts = nil
+	a.readOnlyNoProgressSig, a.readOnlyNoProgressCount = "", 0
 	a.sink.Emit(event.Event{Kind: event.TurnStarted})
 	rawInput := input
 	memoryCompilerInput := rawInput
@@ -1878,6 +1888,7 @@ func (a *Agent) executeBatch(ctx context.Context, calls []provider.ToolCall) []s
 	}
 	if !cancelled {
 		a.applyStormBreaker(calls, outcomes, results)
+		a.applyReadOnlyNoProgressGuard(calls, outcomes, results)
 	}
 	return results
 }
@@ -1989,6 +2000,12 @@ const stormBreakThreshold = 3
 // no-op/write loop and should be redirected to a different tool or final answer.
 const repeatSuccessBreakThreshold = 2
 
+// readOnlyNoProgressBreakThreshold leaves room for normal polling and
+// verification while still cutting off an unbounded no-op read loop. Unlike the
+// write guard, this is a model-facing nudge after the call completes: the output
+// is part of the signature, so a changed result always resets the counter.
+const readOnlyNoProgressBreakThreshold = 6
+
 // applyStormBreaker detects a run of identically-failing turns and, past the
 // threshold, rewrites the model-facing result (results[0]) into a directive to
 // change approach. It keys on each call's (tool, error) — not its args — because a
@@ -2046,6 +2063,58 @@ func batchStormSignature(calls []provider.ToolCall, outcomes []toolOutcome) (str
 		sb.WriteString(calls[i].Name)
 		sb.WriteByte(0)
 		sb.WriteString(outcomes[i].errMsg)
+		sb.WriteByte(0)
+	}
+	return sb.String(), true
+}
+
+// applyReadOnlyNoProgressGuard nudges the model away from repeating an identical
+// successful read. Long Build runs may need many reads, polls, and test commands,
+// so it only fires when every call in consecutive batches has the same name,
+// canonical arguments, and result bytes. A changed result, a failed/blocked call,
+// or any write resets the run instead of treating productive work as a loop.
+func (a *Agent) applyReadOnlyNoProgressGuard(calls []provider.ToolCall, outcomes []toolOutcome, results []string) {
+	sig, ok := a.batchReadOnlyNoProgressSignature(calls, outcomes)
+	if !ok {
+		a.readOnlyNoProgressSig, a.readOnlyNoProgressCount = "", 0
+		return
+	}
+	if sig != a.readOnlyNoProgressSig {
+		a.readOnlyNoProgressSig, a.readOnlyNoProgressCount = sig, 1
+		return
+	}
+	a.readOnlyNoProgressCount++
+	if a.readOnlyNoProgressCount < readOnlyNoProgressBreakThreshold {
+		return
+	}
+	subject := fmt.Sprintf("%q", calls[0].Name)
+	if len(calls) > 1 {
+		subject = fmt.Sprintf("this batch of %d read-only tool calls", len(calls))
+	}
+	results[0] = outcomes[0].output + fmt.Sprintf(
+		"\n\n[loop guard] %s has returned the same result %d times in a row with identical arguments. Treat that result as already known: change the query, inspect a different source, make the next required change, wait for an external state change, or give the user a final status instead of polling again.",
+		subject, a.readOnlyNoProgressCount)
+	a.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: fmt.Sprintf(
+		"loop guard: %s returned no new information %d× — nudging the model to make progress",
+		subject, a.readOnlyNoProgressCount)})
+}
+
+func (a *Agent) batchReadOnlyNoProgressSignature(calls []provider.ToolCall, outcomes []toolOutcome) (string, bool) {
+	if len(calls) == 0 {
+		return "", false
+	}
+	var sb strings.Builder
+	for i, call := range calls {
+		t, ok := a.tools.Get(call.Name)
+		if !ok || !t.ReadOnly() || outcomes[i].blocked || outcomes[i].errMsg != "" {
+			return "", false
+		}
+		sb.WriteString(call.Name)
+		sb.WriteByte(0)
+		sb.WriteString(canonicalToolArgs(call.Arguments))
+		sb.WriteByte(0)
+		outputDigest := sha256.Sum256([]byte(outcomes[i].output))
+		sb.Write(outputDigest[:])
 		sb.WriteByte(0)
 	}
 	return sb.String(), true
