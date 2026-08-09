@@ -62,6 +62,26 @@ func TestBroadcasterUnsubscribe(t *testing.T) {
 	b.Emit(event.Event{Kind: event.TurnDone})
 }
 
+func TestBroadcasterDisconnectAllClosesSubscribers(t *testing.T) {
+	b := NewBroadcaster()
+	a, cancelA := b.Subscribe()
+	d, cancelD := b.Subscribe()
+	defer cancelA()
+	defer cancelD()
+
+	if got := b.DisconnectAll(); got != 2 {
+		t.Fatalf("disconnected subscribers = %d, want 2", got)
+	}
+	if got := b.Subscribers(); got != 0 {
+		t.Fatalf("subscribers after disconnect = %d, want 0", got)
+	}
+	for i, ch := range []<-chan []byte{a, d} {
+		if _, ok := <-ch; ok {
+			t.Fatalf("subscriber %d remained open after disconnect", i)
+		}
+	}
+}
+
 func TestBroadcasterDropsSlowSubscriber(t *testing.T) {
 	b := NewBroadcaster()
 	ch, cancel := b.Subscribe()

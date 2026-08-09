@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -293,12 +294,22 @@ func (s *Server) RunGraceful(ctx context.Context, addr string) error {
 		return err
 	case <-ctx.Done():
 		slog.Info("serve: shutting down gracefully")
+		// Shutdown waits for in-flight handlers. An SSE response is intentionally
+		// long-lived, so proactively end those streams first; EventSource clients
+		// reconnect after the new listener is ready instead of making a deployment
+		// wait for the full drain timeout.
+		s.bc.DisconnectAll()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			slog.Warn("serve: graceful shutdown failed", "err", err)
+			_ = srv.Close()
+			return err
 		}
-		return <-errCh
+		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
 	}
 }
 

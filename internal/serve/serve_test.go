@@ -271,6 +271,31 @@ func TestServeIndexPage(t *testing.T) {
 	}
 }
 
+func TestRunGracefulDisconnectsSSESubscribersAndReturnsCleanly(t *testing.T) {
+	bc := NewBroadcaster()
+	ctrl := control.New(control.Options{Sink: bc})
+	s := New(ctrl, bc, config.ServeConfig{})
+	ch, unsubscribe := bc.Subscribe()
+	defer unsubscribe()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.RunGraceful(ctx, "127.0.0.1:0") }()
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("RunGraceful returned %v, want nil", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunGraceful did not return after cancellation")
+	}
+	if _, ok := <-ch; ok {
+		t.Fatal("SSE subscriber remained open during graceful shutdown")
+	}
+}
+
 func TestServeIndexDefinesQueryHelpers(t *testing.T) {
 	html := string(indexHTML)
 	for _, want := range []string{
