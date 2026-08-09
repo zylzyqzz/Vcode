@@ -38,9 +38,9 @@ const (
 )
 
 const (
-	cookieToken     = "vcode_token"    // holds the token for token mode
-	cookieSession   = "vcode_session"  // holds the HMAC-signed session for password mode
-	cookieRedirect  = "vcode_redirect" // temporary: where to go after login
+	cookieToken     = "vcode_token"       // holds the token for token mode
+	cookieSession   = "vcode_session"     // holds the HMAC-signed session for password mode
+	cookieRedirect  = "vcode_redirect"    // temporary: where to go after login
 	tokenByteLen    = 32                  // 256-bit random token
 	sessionDuration = 30 * 24 * time.Hour // how long a password session lasts
 	bcryptCost      = 12                  // bcrypt cost factor

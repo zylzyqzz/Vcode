@@ -3,9 +3,9 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"vcode/internal/event"
 	"strings"
 	"testing"
+	"vcode/internal/event"
 
 	"vcode/internal/planmode"
 	"vcode/internal/provider"

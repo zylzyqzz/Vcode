@@ -62,7 +62,7 @@ type Options struct {
 type installSourceTool struct {
 	root         string
 	home         string
-	vcodeHome string
+	vcodeHome    string
 	httpClient   *http.Client
 	connectMCP   MCPConnector
 	onDisconnect OnDisconnectFunc
@@ -107,7 +107,7 @@ func NewTool(opts Options) tool.Tool {
 	return &installSourceTool{
 		root:         root,
 		home:         home,
-		vcodeHome: vcodeHome,
+		vcodeHome:    vcodeHome,
 		httpClient:   client,
 		connectMCP:   opts.ConnectMCP,
 		onDisconnect: opts.OnDisconnect,

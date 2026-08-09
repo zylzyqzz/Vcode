@@ -83,7 +83,7 @@ func IsValidName(name string) bool { return config.IsValidSkillName(name) }
 // config.VcodeHomeDir(), or HomeDir/.vcode when HomeDir is explicitly set.
 type Options struct {
 	HomeDir         string
-	VcodeHomeDir string
+	VcodeHomeDir    string
 	ProjectRoot     string
 	CustomPaths     []string
 	ExcludedPaths   []string
@@ -99,7 +99,7 @@ type Options struct {
 // Store resolves skills across the configured roots.
 type Store struct {
 	homeDir         string
-	vcodeHomeDir string
+	vcodeHomeDir    string
 	projectRoot     string
 	customPaths     []string
 	excludedPaths   map[string]bool
@@ -149,7 +149,7 @@ func New(opts Options) *Store {
 	}
 	return &Store{
 		homeDir:         home,
-		vcodeHomeDir: vcodeHome,
+		vcodeHomeDir:    vcodeHome,
 		projectRoot:     root,
 		customPaths:     custom,
 		excludedPaths:   excluded,
