@@ -65,6 +65,8 @@ jobs:
           set -euo pipefail
           test -n "$DEPLOY_HOST"
           test -n "$DEPLOY_USER"
-          scp -O -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 release/vcode-linux-amd64 release/vcode-linux-amd64.sha256 "$DEPLOY_USER@$DEPLOY_HOST:/home/$DEPLOY_USER/"
+          tar -C release -czf - vcode-linux-amd64 vcode-linux-amd64.sha256 | \
+            ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "$DEPLOY_USER@$DEPLOY_HOST" \
+              "set -euo pipefail; umask 077; tar -xzf - -C /home/$DEPLOY_USER; test -s /home/$DEPLOY_USER/vcode-linux-amd64; test -s /home/$DEPLOY_USER/vcode-linux-amd64.sha256"
           ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "$DEPLOY_USER@$DEPLOY_HOST" \
             "sudo /usr/local/sbin/deploy-vcode-prod '$COMMIT' /home/$DEPLOY_USER/vcode-linux-amd64 /home/$DEPLOY_USER/vcode-linux-amd64.sha256"
