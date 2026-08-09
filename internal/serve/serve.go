@@ -315,6 +315,10 @@ func (s *Server) RunGraceful(ctx context.Context, addr string) error {
 
 func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// The embedded shell changes with every server release. Never let a mobile
+	// WebView retain an old shell, or its controls can disagree with the API
+	// contract of the running server.
+	w.Header().Set("Cache-Control", "no-store")
 	_, _ = config.MigrateLegacyIfNeeded()
 	lang := "auto"
 	if cfg, err := config.Load(); err == nil {
