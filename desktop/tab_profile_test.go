@@ -414,8 +414,8 @@ func TestMetaReportsGoalStatus(t *testing.T) {
 
 	app.SetGoalForTab(tab.ID, "finish the goal runner")
 	meta = app.MetaForTab(tab.ID)
-	if meta.Goal != "finish the goal runner" || meta.GoalStatus != control.GoalStatusRunning || meta.CollaborationMode != "goal" {
-		t.Fatalf("goal meta = %+v, want running goal", meta)
+	if meta.Goal != "" || meta.GoalStatus != control.GoalStatusStopped || meta.CollaborationMode != "normal" {
+		t.Fatalf("legacy Goal request must be ignored, got %+v", meta)
 	}
 
 	app.ClearGoalForTab(tab.ID)
