@@ -7,8 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<link rel="manifest" href="/manifest.json" />
-<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="manifest" href="__BASE_PATH__/manifest.json" />
+<link rel="icon" href="__BASE_PATH__/favicon.svg" type="image/svg+xml" />
 <title>Vcode</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -635,6 +635,27 @@ input,textarea{font:inherit;color:inherit}
 </div>
 <script>
 // ── i18n ──
+// The recovery runtime is optionally mounted below /1/ by the reverse proxy.
+// Keep absolute API paths inside the selected runtime.
+const VCODE_BASE_PATH = '__BASE_PATH__';
+const VCODE_FETCH = window.fetch.bind(window);
+function vcodeScopedURL(input) {
+  if (!VCODE_BASE_PATH) return input;
+  if (typeof input === 'string' && input.startsWith('/') && !input.startsWith(VCODE_BASE_PATH + '/')) {
+    return VCODE_BASE_PATH + input;
+  }
+  return input;
+}
+window.fetch = (input, init) => VCODE_FETCH(vcodeScopedURL(input), init);
+const VCODE_EVENT_SOURCE = window.EventSource;
+window.EventSource = function(url, options) {
+  return new VCODE_EVENT_SOURCE(vcodeScopedURL(url), options);
+};
+window.EventSource.prototype = VCODE_EVENT_SOURCE.prototype;
+window.EventSource.CONNECTING = VCODE_EVENT_SOURCE.CONNECTING;
+window.EventSource.OPEN = VCODE_EVENT_SOURCE.OPEN;
+window.EventSource.CLOSED = VCODE_EVENT_SOURCE.CLOSED;
+
 const __LANG_PREF = '__LANG__';
 const __LANG = (__LANG_PREF === 'zh' || __LANG_PREF === 'en') ? __LANG_PREF : ((navigator.language || '').startsWith('zh') ? 'zh' : 'en');
 document.documentElement.lang = __LANG;

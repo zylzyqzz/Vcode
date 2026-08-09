@@ -7,10 +7,10 @@ running two agents against the same workspace at the same time.
 
 ```text
 primary runtime       /opt/vcode              127.0.0.1:18878
-recovery standby      /opt/vcode-recovery     127.0.0.1:18879 (normally stopped)
+recovery standby      /opt/vcode-recovery     127.0.0.1:18879 (always-on, silent)
 recovery active       /opt/vcode-recovery     127.0.0.1:18878 (during failover)
 recovery state        /etc/vcode-recovery    (separate sessions/config)
-public reverse proxy  v.aimj.xin              always points to 18878
+public reverse proxy  v.aimj.xin              / -> 18878, /1/ -> 18879
 ```
 
 The recovery configuration defaults to the official DeepSeek provider. Its
@@ -31,20 +31,21 @@ Run on the server as `root`:
 /usr/local/sbin/vcode-failover primary
 ```
 
-`recovery` stops the primary, starts the isolated recovery state on the fixed
-public port, and checks `/login` before declaring success. If the health check
-fails, it starts the primary again. `primary` performs the inverse operation.
+`recovery` stops the primary, temporarily moves the isolated recovery state to
+the fixed public port, and checks `/login` before declaring success. If the
+health check fails, it starts the primary again. `primary` performs the inverse
+operation and brings the silent `/1/` standby back.
 
-The standby unit is intentionally disabled and stopped by default:
+The standby unit runs silently on `/1/` so it can repair the primary runtime:
 
 ```sh
-systemctl start vcode-recovery.service
+systemctl status vcode-recovery.service
 systemctl stop vcode-recovery.service
 ```
 
-That unit is useful for a local health check on port `18879`; it must be
-stopped before active failover because both recovery modes share the isolated
-recovery state directory.
+It must be stopped before active failover because both recovery modes share the
+isolated recovery state directory. The `/1/` web client is path-aware and keeps
+its API, SSE, manifest, and favicon requests inside the recovery runtime.
 
 ## Upgrade rule
 

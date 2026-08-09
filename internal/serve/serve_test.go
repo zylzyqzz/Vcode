@@ -27,6 +27,25 @@ type fakeRunner struct{ got chan string }
 
 func (f fakeRunner) Run(_ context.Context, input string) error { f.got <- input; return nil }
 
+type blockingRunner struct {
+	started chan string
+	release chan struct{}
+}
+
+func (r blockingRunner) Run(ctx context.Context, input string) error {
+	select {
+	case r.started <- input:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case <-r.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func TestServeSubmitRunsAndBroadcastsTurnDone(t *testing.T) {
 	bc := NewBroadcaster()
 	got := make(chan string, 1)
@@ -67,6 +86,110 @@ func TestServeSubmitRunsAndBroadcastsTurnDone(t *testing.T) {
 			t.Fatal("never saw turn_done on the stream")
 		}
 	}
+}
+
+func TestServeSubmitRejectsConcurrentTurn(t *testing.T) {
+	bc := NewBroadcaster()
+	runner := blockingRunner{started: make(chan string, 1), release: make(chan struct{})}
+	ctrl := control.New(control.Options{Runner: runner, Sink: bc})
+	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	type result struct{ status int }
+	results := make(chan result, 2)
+	post := func(input string) {
+		resp, err := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{"input":"`+input+`"}`))
+		if err != nil {
+			results <- result{status: 0}
+			return
+		}
+		resp.Body.Close()
+		results <- result{status: resp.StatusCode}
+	}
+	go post("first")
+	go post("second")
+
+	statuses := []int{(<-results).status, (<-results).status}
+	accepted, conflict := 0, 0
+	for _, status := range statuses {
+		switch status {
+		case http.StatusAccepted:
+			accepted++
+		case http.StatusConflict:
+			conflict++
+		}
+	}
+	if accepted != 1 || conflict != 1 {
+		t.Fatalf("concurrent submit statuses = %v, want one 202 and one 409", statuses)
+	}
+	select {
+	case input := <-runner.started:
+		if input != "first" && input != "second" {
+			t.Fatalf("runner started with %q", input)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("first runner never started")
+	}
+	close(runner.release)
+}
+
+func TestServeResumeRejectsRunningSession(t *testing.T) {
+	dir := t.TempDir()
+	active := filepath.Join(dir, "active.jsonl")
+	inside := filepath.Join(dir, "inside.jsonl")
+	for _, path := range []string{active, inside} {
+		if err := os.WriteFile(path, []byte(`{"role":"user","content":"hi"}`+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	bc := NewBroadcaster()
+	runner := blockingRunner{started: make(chan string, 1), release: make(chan struct{})}
+	ctrl := control.New(control.Options{Runner: runner, Sink: bc, SessionDir: dir, SessionPath: active})
+	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{"input":"work"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit status = %d, want 202", resp.StatusCode)
+	}
+	select {
+	case <-runner.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runner never started")
+	}
+
+	body, err := json.Marshal(map[string]string{"path": inside})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err = http.Post(srv.URL+"/resume", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("resume while running status = %d, want 409", resp.StatusCode)
+	}
+	if got := filepath.Clean(ctrl.SessionPath()); got != filepath.Clean(active) {
+		t.Fatalf("session path changed during running turn: %q", got)
+	}
+	close(runner.release)
+	deadline := time.Now().Add(2 * time.Second)
+	for ctrl.Running() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if ctrl.Running() {
+		t.Fatal("running turn did not finish after release")
+	}
+	// Running is cleared just before the turn-done event and the autosave
+	// goroutine receives its cancellation. Give that cleanup a chance to release
+	// Windows file handles before t.TempDir removes the session directory.
+	time.Sleep(100 * time.Millisecond)
 }
 
 func TestServeEndpoints(t *testing.T) {

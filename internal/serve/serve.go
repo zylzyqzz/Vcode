@@ -49,7 +49,12 @@ var faviconSVG []byte
 // Server wires a controller to its HTTP surface. The Broadcaster must be the
 // same sink the controller was constructed with, so events reach SSE clients.
 type Server struct {
-	mu             sync.RWMutex // guards ctrl, which switchModel swaps at runtime
+	mu sync.RWMutex // guards ctrl, which switchModel swaps at runtime
+	// sessionMu serializes operations that can replace or start work on the
+	// active controller session. The controller itself rejects a second turn,
+	// but the server must also keep submit/resume/new-session from racing that
+	// check and changing the transcript underneath an active turn.
+	sessionMu      sync.Mutex
 	taskMu         sync.Mutex
 	ctrl           control.SessionAPI
 	bc             *Broadcaster
@@ -167,6 +172,8 @@ func (s *Server) initTitleProvider() {
 // write lock is held across the whole rebuild so concurrent requests never read
 // a half-swapped controller and two switches can't run at once.
 func (s *Server) switchModel(ctx context.Context, ref string) error {
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cur := s.ctrl
@@ -203,6 +210,8 @@ func (s *Server) switchWorkspace(ctx context.Context, root string) error {
 	if err != nil || root == "" {
 		return errors.New("invalid workspace")
 	}
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cur := s.ctrl
@@ -481,7 +490,22 @@ func (s *Server) RunGraceful(ctx context.Context, addr string) error {
 	}
 }
 
-func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
+func forwardedPrefix(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	prefix := strings.TrimSpace(r.Header.Get("X-Forwarded-Prefix"))
+	if prefix == "" || !strings.HasPrefix(prefix, "/") {
+		return ""
+	}
+	prefix = "/" + strings.Trim(prefix, "/")
+	if prefix == "/" {
+		return ""
+	}
+	return prefix
+}
+
+func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// The mobile client is a WebView/PWA and must receive the latest embedded
 	// layout after a server deployment. Without an explicit cache policy,
@@ -497,6 +521,7 @@ func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 	html := string(indexHTML)
+	html = strings.ReplaceAll(html, "__BASE_PATH__", forwardedPrefix(r))
 	html = strings.ReplaceAll(html, "__LANG__", lang)
 	_, _ = w.Write([]byte(html))
 }
@@ -622,14 +647,21 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Keep the running check, task creation, controller binding, and turn start
+	// together. Otherwise two HTTP requests can both observe an idle controller
+	// and a concurrent /resume or /new can swap the session while the first turn
+	// is still starting.
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+	ctrl := s.ctl()
 	s.taskMu.Lock()
 	usePipeline := false
 	pipelineID := ""
-	if !s.ctl().Running() {
+	if !ctrl.Running() {
 		id := fmt.Sprintf("task-%d", time.Now().UnixNano())
-		workspace := s.ctl().WorkspaceRoot()
+		workspace := ctrl.WorkspaceRoot()
 		var err error
-		if current, lookupErr := s.tasks.pausedForSession(s.ctl().SessionPath()); lookupErr == nil && current != nil {
+		if current, lookupErr := s.tasks.pausedForSession(ctrl.SessionPath()); lookupErr == nil && current != nil {
 			id = current.ID
 			err = s.tasks.adoptPaused(id)
 		} else {
@@ -642,8 +674,8 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 			}
 			if err == nil {
 				created, submitErr := s.taskRuntime.Submit(r.Context(), TaskRequest{
-					ID: id, Goal: body.Input, Mode: currentWebMode(s.ctl()),
-					Model: s.ctl().Label(), Workspace: workspace, SessionID: s.ctl().SessionPath(), IdempotencyKey: idempotencyKey,
+					ID: id, Goal: body.Input, Mode: currentWebMode(ctrl),
+					Model: ctrl.Label(), Workspace: workspace, SessionID: ctrl.SessionPath(), IdempotencyKey: idempotencyKey,
 				})
 				err = submitErr
 				if err == nil && created != nil && created.ID != id {
@@ -663,18 +695,22 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.bc.BindTask(id)
-		mode := currentWebMode(s.ctl())
+		mode := currentWebMode(ctrl)
 		usePipeline = (mode == "build" || mode == "goal") && shouldUsePipeline(body.Input)
 		if usePipeline {
 			s.beginPipeline(id)
 			pipelineID = id
 		}
+	} else {
+		s.taskMu.Unlock()
+		http.Error(w, "a task is already running for this session", http.StatusConflict)
+		return
 	}
 	s.taskMu.Unlock()
 	if usePipeline {
 		go s.runPipeline(pipelineID, body.Input)
 	} else {
-		s.ctl().SubmitHTTP(body.Input)
+		ctrl.SubmitHTTP(body.Input)
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
@@ -777,7 +813,10 @@ func (s *Server) resumeDurableTask() {
 	}
 	go func() {
 		time.Sleep(250 * time.Millisecond)
-		if s.ctl().Running() {
+		s.sessionMu.Lock()
+		defer s.sessionMu.Unlock()
+		ctrl := s.ctl()
+		if ctrl.Running() {
 			return
 		}
 		var lock *workspaceLock
@@ -930,18 +969,23 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) compact(w http.ResponseWriter, r *http.Request) {
-	if err := s.ctl().Compact(r.Context(), ""); err != nil {
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+	ctrl := s.ctl()
+	if err := ctrl.Compact(r.Context(), ""); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	// Persist the compacted session to disk — ctrl.Compact() only mutates in-memory.
-	if err := s.ctl().Snapshot(); err != nil {
+	if err := ctrl.Snapshot(); err != nil {
 		slog.Warn("serve: snapshot after compact", "err", err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) newSession(w http.ResponseWriter, _ *http.Request) {
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
 	if err := s.ctl().NewSession(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1123,6 +1167,8 @@ func (s *Server) rewind(w http.ResponseWriter, r *http.Request) {
 	case "conversation":
 		scope = control.RewindConversation
 	}
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
 	if err := s.ctl().Rewind(body.Turn, scope); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1140,6 +1186,8 @@ func (s *Server) fork(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing turn", http.StatusBadRequest)
 		return
 	}
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
 	path, err := s.ctl().ForkNamed(body.Turn, body.Name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1158,12 +1206,15 @@ func (s *Server) summarize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing turn", http.StatusBadRequest)
 		return
 	}
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
 	var err error
+	ctrl := s.ctl()
 	switch body.Mode {
 	case "from":
-		err = s.ctl().SummarizeFrom(r.Context(), body.Turn)
+		err = ctrl.SummarizeFrom(r.Context(), body.Turn)
 	case "upto":
-		err = s.ctl().SummarizeUpTo(r.Context(), body.Turn)
+		err = ctrl.SummarizeUpTo(r.Context(), body.Turn)
 	default:
 		http.Error(w, "mode must be 'from' or 'upto'", http.StatusBadRequest)
 		return
@@ -1262,7 +1313,14 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing path", http.StatusBadRequest)
 		return
 	}
-	dir := s.ctl().SessionDir()
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+	ctrl := s.ctl()
+	if ctrl.Running() {
+		http.Error(w, "cannot resume a session while a task is running", http.StatusConflict)
+		return
+	}
+	dir := ctrl.SessionDir()
 	if dir == "" {
 		http.Error(w, "sessions disabled", http.StatusBadRequest)
 		return
@@ -1295,8 +1353,14 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session is pending cleanup", http.StatusBadRequest)
 		return
 	}
+	// Selecting the already active session is a no-op. In particular, do not
+	// snapshot/reload it just because the browser refreshed its session list.
+	if filepath.Clean(ctrl.SessionPath()) == filepath.Clean(realPath) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	// Snapshot the current session before switching away.
-	if err := s.ctl().Snapshot(); err != nil {
+	if err := ctrl.Snapshot(); err != nil {
 		slog.Warn("serve: snapshot before resume", "err", err)
 	}
 	loaded, err := agent.LoadSession(realPath)
@@ -1304,7 +1368,7 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "load session: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.ctl().Resume(loaded, realPath)
+	ctrl.Resume(loaded, realPath)
 	w.WriteHeader(http.StatusNoContent)
 }
 

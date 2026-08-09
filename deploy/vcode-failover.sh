@@ -50,6 +50,7 @@ switch_recovery() {
   if ! wait_http; then
     stop_clean "$RECOVERY_ACTIVE_UNIT"
     systemctl start "$PRIMARY_UNIT" || true
+    systemctl start "$RECOVERY_STANDBY_UNIT" || true
     die "recovery runtime did not become healthy; primary was restarted"
   fi
   echo "recovery runtime is now active on ${ACTIVE_PORT}"
@@ -62,7 +63,7 @@ switch_primary() {
     systemctl start "$RECOVERY_ACTIVE_UNIT" || true
     die "primary runtime did not become healthy; recovery was restarted"
   fi
-  stop_clean "$RECOVERY_STANDBY_UNIT"
+  systemctl start "$RECOVERY_STANDBY_UNIT"
   echo "primary runtime is now active on ${ACTIVE_PORT}"
 }
 

@@ -164,7 +164,14 @@ type Controller struct {
 
 	// mu guards the run state; every critical section under it is short and
 	// non-blocking.
-	mu          sync.Mutex
+	mu sync.Mutex
+	// snapshotMu serializes all transcript snapshots issued by this controller.
+	// A long turn can be autosaved while its final activity snapshot is being
+	// written. Without this second lock, the later snapshot may capture a newer
+	// in-memory revision while the earlier one is still committing, which looks
+	// like another runtime changed the session on disk and needlessly creates a
+	// recovery branch.
+	snapshotMu  sync.Mutex
 	cancel      context.CancelFunc
 	running     bool
 	canceling   bool
@@ -2636,6 +2643,13 @@ func (c *Controller) autosaveWhileRunning(ctx context.Context) {
 }
 
 func (c *Controller) snapshot(markActivity, forceRewrite bool) error {
+	// Keep snapshotWithVersion, the disk comparison, the atomic replace, and the
+	// persisted revision update in one controller-local critical section. The
+	// Session type already protects its message slice; this lock protects the
+	// ordering of complete saves from the autosave goroutine and turn-final save.
+	c.snapshotMu.Lock()
+	defer c.snapshotMu.Unlock()
+
 	c.mu.Lock()
 	path := c.sessionPath
 	modelRef := c.modelRef
@@ -2894,6 +2908,10 @@ func (c *Controller) replaceSessionAfterCancel(msgs []provider.Message) {
 	path := c.sessionPath
 	c.mu.Unlock()
 	if path != "" {
+		// Cancellation cleanup is a direct rewrite because it must also flush a
+		// transcript that was reduced to only its system message. It still has to
+		// share the controller snapshot lock with the mid-turn autosaver.
+		c.snapshotMu.Lock()
 		if err := c.executor.Session().SaveRewrite(path); err != nil {
 			if errors.Is(err, agent.ErrSessionSnapshotConflict) {
 				if _, _, recoverErr := c.recoverSnapshotConflict(path, err, true); recoverErr != nil {
@@ -2903,6 +2921,7 @@ func (c *Controller) replaceSessionAfterCancel(msgs []provider.Message) {
 				slog.Warn("controller: post-cancel transcript flush", "err", err)
 			}
 		}
+		c.snapshotMu.Unlock()
 	}
 }
 

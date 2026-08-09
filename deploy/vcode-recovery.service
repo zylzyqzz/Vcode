@@ -9,7 +9,7 @@ User=root
 WorkingDirectory=/opt/vcode
 Environment=VCODE_HOME=/etc/vcode-recovery
 ExecStart=/opt/vcode-recovery/bin/vcode-start.sh
-Restart=on-failure
+Restart=always
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=20
