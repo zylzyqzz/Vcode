@@ -253,9 +253,8 @@ input,textarea{font:inherit;color:inherit}
 .session-item__title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;font-size:12.5px;line-height:1.3}
 .session-item__meta{font-family:var(--mono);font-size:10px;color:var(--muted-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .session-item__path{font-family:var(--mono);font-size:10px;color:var(--muted-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.session-del{flex-shrink:0;padding:2px 6px;color:var(--muted-2);font-size:14px;line-height:1;display:none}
-.session-item:hover .session-del,.session-del:focus-visible{display:inline-flex}
-.session-del:hover{color:var(--danger)}
+.session-del{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;color:var(--muted-2);font-size:18px;line-height:1;border-radius:6px}
+.session-del:hover,.session-del:focus-visible{background:var(--danger-soft);color:var(--danger)}
 
 @media(max-width:768px){
   .app{grid-template-columns:1fr;padding:max(10px,env(safe-area-inset-top)) 0 max(14px,env(safe-area-inset-bottom))}
@@ -288,6 +287,20 @@ input,textarea{font:inherit;color:inherit}
 .stat-card__value.ok{color:var(--success)}
 .stat-card--wide{grid-column:1/-1}
 .sidebar__item--danger{color:var(--danger)}
+.sidebar__item--refreshing svg{animation:spin .8s linear infinite}
+
+/* Assistant prose is rendered from a safe, small Markdown subset after a
+   streamed answer completes. It keeps the structure while hiding raw markers. */
+.msg--assistant .msg__text{display:block;white-space:pre-wrap}
+.msg--assistant .msg__text p{margin:0 0 10px;white-space:pre-wrap}
+.msg--assistant .msg__text p:last-child{margin-bottom:0}
+.msg--assistant .msg__text h2,.msg--assistant .msg__text h3,.msg--assistant .msg__text h4{font-family:var(--heading);color:var(--fg);line-height:1.35;margin:18px 0 7px;font-weight:650}
+.msg--assistant .msg__text h2{font-size:18px}.msg--assistant .msg__text h3{font-size:16px}.msg--assistant .msg__text h4{font-size:14px}
+.msg--assistant .msg__text ul,.msg--assistant .msg__text ol{margin:4px 0 10px;padding-left:22px;display:grid;gap:4px}
+.msg--assistant .msg__text li{padding-left:2px}
+.msg--assistant .msg__text code{font-family:var(--mono);font-size:.9em;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:1px 4px}
+.msg--assistant .msg__text pre{margin:8px 0 12px;padding:10px 12px;overflow:auto;background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius);white-space:pre-wrap}
+.msg--assistant .msg__text pre code{background:none;border:0;padding:0;font-size:12px}
 </style>
 </head>
 <body>
@@ -298,7 +311,7 @@ input,textarea{font:inherit;color:inherit}
 <div class="app">
   <aside class="sidebar">
     <div class="sidebar__brand">
-      <div class="sidebar__logo">R</div>
+      <div class="sidebar__logo">V</div>
       <span class="sidebar__name">Vcode</span>
     </div>
 <nav class="sidebar__nav" style="border-top:none;padding-top:0">
@@ -317,6 +330,10 @@ input,textarea{font:inherit;color:inherit}
       <div class="sidebar__item" id="btn-tree">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
         <span>__('branches')</span>
+      </div>
+      <div class="sidebar__item" id="btn-refresh" title="__('refresh_help')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        <span>__('refresh')</span>
       </div>
       <div class="sidebar__sep"></div>
       <div class="sidebar__item" id="btn-stats">
@@ -347,7 +364,7 @@ input,textarea{font:inherit;color:inherit}
 
   <section class="transcript" id="log">
     <div class="welcome" id="welcome">
-      <div class="welcome__logo">R</div>
+      <div class="welcome__logo">V</div>
       <div class="welcome__title">Vcode</div>
       <div class="welcome__tag">__('welcome_tag')</div>
       <div class="welcome__hints">
@@ -470,6 +487,8 @@ const __T = {
     'thinking': 'Thinking...',
     'retrying_status': 'Retrying ({attempt}/{max})...',
     'stats': 'Stats',
+    'refresh': 'Refresh',
+    'refresh_help': 'Refresh the interface without stopping a running task',
     'statistics': 'Statistics',
     'model': 'Model',
     'total_tokens': 'Total Tokens',
@@ -530,6 +549,7 @@ const __T = {
     'scope_sumfrom': 'Summarize from here',
     'scope_sumupto': 'Summarize up to here',
     'delete_confirm': 'Delete this session?',
+    'delete_failed': 'Unable to delete this session.',
     'welcome_tag': 'AI coding agent',
     'hint_commands': '/ commands',
     'hint_mode': 'Plan',
@@ -563,6 +583,8 @@ const __T = {
     'thinking': '思考中...',
     'retrying_status': '正在重试 ({attempt}/{max})...',
     'stats': '统计',
+    'refresh': '刷新',
+    'refresh_help': '刷新界面，不会停止正在执行的任务',
     'statistics': '统计',
     'model': '模型',
     'total_tokens': '总 Token',
@@ -623,6 +645,7 @@ const __T = {
     'scope_sumfrom': '从此处总结',
     'scope_sumupto': '总结到此处',
     'delete_confirm': '删除此会话？',
+    'delete_failed': '删除会话失败。',
     'welcome_tag': 'AI 编码助手',
     'hint_commands': '/ 命令',
     'hint_mode': '计划',
@@ -774,7 +797,35 @@ function addUserMsg(text) { hideWelcome(); const d=el('div','msg msg--user'); d.
 function ensureMsg() { if(!currentMsg){hideWelcome();currentMsg=el('div','msg msg--assistant');log.appendChild(currentMsg);} return currentMsg; }
 function appendText(t) { const m=ensureMsg(); if(!currentText){currentText=document.createElement('span');currentText.className='msg__text'; const old=m.querySelector('.cursor');if(old)old.remove(); m.appendChild(currentText); m.appendChild(el('span','cursor'));} currentText.textContent+=t; scrollDown(); }
 function appendReasoning(t) { const m=ensureMsg(); if(!currentReasoning){const w=el('div','reasoning'); const b=el('button','reasoning__toggle'); b.innerHTML='<span class="reasoning__chevron">▶</span> '+__('thinking'); const body=el('div','reasoning__body'); body.style.display='none'; b.onclick=()=>{body.style.display=body.style.display==='none'?'':'none';b.querySelector('.reasoning__chevron').className='reasoning__chevron'+(body.style.display!=='none'?' reasoning__chevron--open':'');}; w.appendChild(b);w.appendChild(body); if(currentText) m.insertBefore(w,currentText); else m.appendChild(w); currentReasoning=body;} currentReasoning.textContent+=t; scrollDown(); }
-function finalizeMsg() { if(currentMsg){const c=currentMsg.querySelector('.cursor');if(c)c.remove();} currentMsg=null;currentText=null;currentReasoning=null; }
+function appendInlineMarkdown(parent, text) {
+  const tokens=String(text||'').split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__)/g);
+  tokens.forEach(token=>{
+    if(!token)return;
+    if(token.startsWith('`')&&token.endsWith('`')) parent.appendChild(el('code','',token.slice(1,-1)));
+    else if((token.startsWith('**')&&token.endsWith('**'))||(token.startsWith('__')&&token.endsWith('__'))){const strong=document.createElement('strong');strong.textContent=token.slice(2,-2);parent.appendChild(strong);}
+    else parent.appendChild(document.createTextNode(token));
+  });
+}
+function renderAssistantMarkdown(target, source) {
+  const fragment=document.createDocumentFragment();
+  let list=null, listKind='', codeLines=null;
+  const closeList=()=>{list=null;listKind='';};
+  const flushCode=()=>{if(codeLines===null)return;const pre=document.createElement('pre'),code=document.createElement('code');code.textContent=codeLines.join('\n');pre.appendChild(code);fragment.appendChild(pre);codeLines=null;};
+  String(source||'').replace(/\r\n?/g,'\n').split('\n').forEach(line=>{
+    if(/^```/.test(line)){if(codeLines===null){closeList();codeLines=[];}else flushCode();return;}
+    if(codeLines!==null){codeLines.push(line);return;}
+    const heading=line.match(/^(#{1,3})\s+(.+?)\s*#*\s*$/);
+    const unordered=line.match(/^\s*[-*+]\s+(.+)$/);
+    const ordered=line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if(heading){closeList();const h=document.createElement('h'+Math.min(4,heading[1].length+1));appendInlineMarkdown(h,heading[2]);fragment.appendChild(h);return;}
+    if(unordered||ordered){const kind=ordered?'ol':'ul';if(!list||listKind!==kind){list=document.createElement(kind);listKind=kind;fragment.appendChild(list);}const li=document.createElement('li');appendInlineMarkdown(li,(unordered||ordered)[1]);list.appendChild(li);return;}
+    if(!line.trim()){closeList();return;}
+    closeList();const p=document.createElement('p');appendInlineMarkdown(p,line);fragment.appendChild(p);
+  });
+  flushCode();
+  target.replaceChildren(fragment);
+}
+function finalizeMsg() { if(currentMsg){const c=currentMsg.querySelector('.cursor');if(c)c.remove();if(currentText)renderAssistantMarkdown(currentText,currentText.textContent);} currentMsg=null;currentText=null;currentReasoning=null; }
 
 // ── tool cards (v1 pattern) ──
 function renderToolDispatch(tool) {
@@ -1111,7 +1162,8 @@ function loadSessions(){
       const name=s.name.replace(/^.*\//,'').replace(/\.jsonl$/,'');
       const title=s.title||name.replace(/^\w+-/,'').replace(/T/,' ').replace(/[-_]/g,' ').slice(0,30);
       const meta=s.turns?s.turns+' turns':'';
-	      item.innerHTML='<svg class="session-item__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><div class="session-item__body"><div class="session-item__title">'+escHtml(title)+'</div><div class="session-item__meta">'+escHtml(meta)+'</div></div><button type="button" class="session-del" data-name="'+escAttr(s.name)+'" title="'+escAttr(__('delete_confirm'))+'">&times;</button>';
+	      const removeButton=s.current?'':'<button type="button" class="session-del" data-name="'+escAttr(s.name)+'" title="'+escAttr(__('delete_confirm'))+'" aria-label="'+escAttr(__('delete_confirm'))+'">&times;</button>';
+	      item.innerHTML='<svg class="session-item__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><div class="session-item__body"><div class="session-item__title">'+escHtml(title)+'</div><div class="session-item__meta">'+escHtml(meta)+'</div></div>'+removeButton;
       item.onclick=()=>{if(running||s.current)return;post('/resume',{path:s.path}).then(()=>{log.innerHTML='';log.appendChild(welcome);welcome.style.display='';todosDismissed=false;loadSessions();setTimeout(()=>fetch('/history').then(r=>r.json()).then(msgs=>{renderHistoryMessages(msgs);fetchTodos();}),300);});};
       list.appendChild(item);
     });
@@ -1226,6 +1278,14 @@ $('#btn-new').onclick=()=>{if(running)return;post('/new').then(()=>{log.innerHTM
 $('#btn-compact').onclick=()=>{if(!running)post('/compact');};
 $('#btn-rewind').onclick=()=>openRewindPicker();
 $('#btn-tree').onclick=()=>{post('/submit',{input:'/tree'});};
+$('#btn-refresh').onclick=()=>{
+  const button=$('#btn-refresh');
+  if(button.classList.contains('sidebar__item--refreshing'))return;
+  button.classList.add('sidebar__item--refreshing');
+  // A reload deliberately leaves the server turn alone. A stuck WebView/SSE
+  // reconnects and restores history, while a long-running task keeps working.
+  window.setTimeout(()=>window.location.reload(),120);
+};
 $('#btn-stats').onclick=()=>openStats();
 
 // ── mobile sidebar toggle ──
@@ -1266,7 +1326,7 @@ document.addEventListener('click',e=>{
   if(!del)return;
   e.stopPropagation();
   const name=del.dataset.name;
-  if(name&&confirm(__('delete_confirm'))){post('/delete-session',{name}).then(()=>loadSessions());}
+  if(name&&confirm(__('delete_confirm'))){post('/delete-session',{name}).then(r=>{if(!r.ok)throw new Error('delete failed');return loadSessions();}).catch(()=>alert(__('delete_failed')));}
 });
 
 // welcome examples
