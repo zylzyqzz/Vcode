@@ -183,6 +183,27 @@ jobs:
       - name: govulncheck
         run: govulncheck ./...
 
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android build SDK
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build Android companion APK
+        run: ./android/gradlew -p android :app:assembleDebug
+
   coverage:
     runs-on: ubuntu-latest
     steps:
