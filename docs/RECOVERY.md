@@ -6,11 +6,11 @@ running two agents against the same workspace at the same time.
 ## Layout
 
 ```text
-primary runtime       /opt/vcode              127.0.0.1:18878
+primary runtime       /opt/vcode-prod         127.0.0.1:18880
 recovery standby      /opt/vcode-recovery     127.0.0.1:18879 (always-on, silent)
-recovery active       /opt/vcode-recovery     127.0.0.1:18878 (during failover)
+recovery active       /opt/vcode-recovery     127.0.0.1:18880 (during failover)
 recovery state        /etc/vcode-recovery    (separate sessions/config)
-public reverse proxy  v.aimj.xin              / -> 18878, /1/ -> 18879
+public reverse proxy  v.aimj.xin              / -> 18880, /1/ -> 18879
 ```
 
 The recovery configuration defaults to the official DeepSeek provider. Its

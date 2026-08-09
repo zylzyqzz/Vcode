@@ -2,4 +2,4 @@
 set -a
 . /etc/vcode-recovery/vcode.env
 set +a
-exec /opt/vcode-recovery/bin/vcode serve --addr 127.0.0.1:18878 --auth password --behind-proxy
+exec /opt/vcode-recovery/bin/vcode serve --addr 127.0.0.1:18880 --auth password --behind-proxy

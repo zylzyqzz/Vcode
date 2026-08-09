@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -eu
 
-PRIMARY_UNIT="vcode.service"
+PRIMARY_UNIT="vcode-prod.service"
 RECOVERY_STANDBY_UNIT="vcode-recovery.service"
 RECOVERY_ACTIVE_UNIT="vcode-recovery-active.service"
-ACTIVE_PORT="18878"
-NGINX_CONF="/etc/nginx/conf.d/vcode.conf"
+ACTIVE_PORT="18880"
+NGINX_CONF="/www/server/panel/vhost/nginx/v.aimj.xin.conf"
 
 die() { echo "vcode-failover: $*" >&2; exit 1; }
 
