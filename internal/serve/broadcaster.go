@@ -58,6 +58,22 @@ func (b *Broadcaster) Subscribe() (<-chan []byte, func()) {
 	}
 }
 
+// DisconnectAll closes every current subscriber channel. It is used while the
+// HTTP server is draining for a restart: SSE handlers observe their channel
+// close, return promptly, and browsers reconnect once the listener is back.
+// Existing unsubscribe callbacks remain safe because they check membership
+// while holding the same lock before attempting to close a channel.
+func (b *Broadcaster) DisconnectAll() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	count := len(b.subs)
+	for ch := range b.subs {
+		delete(b.subs, ch)
+		close(ch)
+	}
+	return count
+}
+
 // Subscribers reports the current connection count (for diagnostics/tests).
 func (b *Broadcaster) Subscribers() int {
 	b.mu.Lock()
