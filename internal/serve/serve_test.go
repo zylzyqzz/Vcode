@@ -269,6 +269,9 @@ func TestServeIndexPage(t *testing.T) {
 	if !strings.Contains(ct, "text/html") {
 		t.Errorf("index content-type = %q, want text/html", ct)
 	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("index Cache-Control = %q, want no-store", got)
+	}
 }
 
 func TestRunGracefulDisconnectsSSESubscribersAndReturnsCleanly(t *testing.T) {
