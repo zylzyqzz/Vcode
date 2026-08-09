@@ -30,7 +30,21 @@ fi
 ln -sfn "$release" "$root/current.next"
 mv -Tf "$root/current.next" "$current"
 
-if systemctl restart vcode-prod.service && /usr/local/sbin/vcode-prod-healthcheck; then
+healthy=0
+if systemctl restart vcode-prod.service; then
+  # systemd reports a service as started before its listener is ready. Give the
+  # new process a bounded warm-up window so a healthy release is not rolled back
+  # merely because the first loopback probe wins that startup race.
+  for _ in $(seq 1 15); do
+    if /usr/local/sbin/vcode-prod-healthcheck; then
+      healthy=1
+      break
+    fi
+    sleep 1
+  done
+fi
+
+if test "$healthy" = 1; then
   find "$releases" -maxdepth 1 -type f -printf '%T@ %p\n' | sort -nr | awk 'NR > 3 {print $2}' | xargs -r rm -f
   exit 0
 fi
