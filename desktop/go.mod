@@ -2,7 +2,7 @@ module vcode/desktop
 
 go 1.25.0
 
-toolchain go1.26.4
+toolchain go1.26.5
 
 require (
 	aead.dev/minisign v0.3.0
