@@ -330,6 +330,24 @@ func TestServeIndexExposesOnlyAutomaticAndPlanModes(t *testing.T) {
 	}
 }
 
+func TestServeIndexSupportsMobileRecoveryAndCleanAssistantFormatting(t *testing.T) {
+	html := string(indexHTML)
+	if strings.Count(html, "const __LANG =") != 1 {
+		t.Fatalf("serve index declares __LANG %d times, want exactly once", strings.Count(html, "const __LANG ="))
+	}
+	for _, want := range []string{
+		`id="btn-refresh"`,
+		"window.location.reload()",
+		"renderAssistantMarkdown",
+		"target.replaceChildren(fragment)",
+		"const removeButton=s.current?'':",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("serve index missing mobile recovery/formatting contract %q", want)
+		}
+	}
+}
+
 func TestServeIndexHandlesRetryingEvents(t *testing.T) {
 	html := string(indexHTML)
 	for _, want := range []string{
