@@ -2,7 +2,12 @@
 set -euo pipefail
 
 test "$(systemctl is-active vcode-prod.service)" = active
-nginx -t >/dev/null
+if test -x /www/server/nginx/sbin/nginx; then
+  nginx_bin=/www/server/nginx/sbin/nginx
+else
+  nginx_bin=$(command -v nginx)
+fi
+"$nginx_bin" -t >/dev/null
 test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18880/status)" = 401
 test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' https://v.aimj.xin/status)" = 401
 
