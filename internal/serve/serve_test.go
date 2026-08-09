@@ -283,6 +283,25 @@ func TestServeIndexDefinesQueryHelpers(t *testing.T) {
 	}
 }
 
+func TestServeIndexExposesOnlyAutomaticAndPlanModes(t *testing.T) {
+	html := string(indexHTML)
+	for _, unwanted := range []string{
+		`id="btn-bypass"`,
+		`id="btn-goal"`,
+		`id="goal-active-bar"`,
+		"Ctrl+Y",
+	} {
+		if strings.Contains(html, unwanted) {
+			t.Fatalf("serve index still exposes retired mode control %q", unwanted)
+		}
+	}
+	for _, wanted := range []string{`id="btn-auto"`, `id="btn-plan"`, "mode:'yolo'"} {
+		if !strings.Contains(html, wanted) {
+			t.Fatalf("serve index missing automatic/plan mode contract %q", wanted)
+		}
+	}
+}
+
 func TestServeIndexHandlesRetryingEvents(t *testing.T) {
 	html := string(indexHTML)
 	for _, want := range []string{
