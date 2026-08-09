@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: "1.26.4"
           cache: true
       - name: Verify root runtime
         run: |
