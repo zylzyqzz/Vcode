@@ -1,7 +1,7 @@
 # Configuration Paths
 
 Starting with **Vcode v1.8.1**, Vcode uses one user-facing home directory
-for global configuration and user-owned state. CLI and desktop share this
+for global configuration and user-owned state. All clients share this
 location.
 
 ## Vcode Home
@@ -37,7 +37,7 @@ mean `<Vcode home>/config.toml`.
 ## Global `config.toml`
 
 `<Vcode home>/config.toml` stores non-secret configuration shared by the CLI
-and desktop app. It may contain the same provider, plugin, UI, desktop, tool,
+and serve web UI. It may contain the same provider, plugin, UI, desktop, tool,
 skill, sandbox, bot, and agent settings that Vcode renders into user config.
 Provider entries store the name of the credential variable in `api_key_env`, not
 the secret value.
@@ -84,7 +84,7 @@ avoids terminal block-cursor artifacts with double-width CJK characters; use
 
 ### Custom provider `api_key_env` names
 
-When a custom provider is added from the desktop settings or `Vcode setup`,
+When a custom provider is added from `Vcode setup`,
 Vcode stores a generated `api_key_env` in `config.toml` and writes the secret
 value to the matching key in the global `.env`. The generated name is stable, so
 the same provider keeps using the same credential slot after restart.
@@ -125,7 +125,7 @@ core fields such as `model`, `messages`, `tools`, or `stream` to be overridden.
 ## Global `.env`
 
 `<Vcode home>/.env` is the single runtime source for provider API keys saved
-by Vcode. The setup wizard, desktop settings, CLI missing-key prompts, and
+by Vcode. The setup wizard, CLI missing-key prompts, and
 provider-key delete actions all read or write this file through the same
 credential helpers.
 
@@ -209,7 +209,7 @@ the same key. If the new global config already exists, it wins and legacy config
 files are only kept as compatibility fallbacks.
 
 Starting in **v1.9.1**, Vcode also backfills MCP servers from known legacy
-paths, legacy `config.json`, desktop-registered projects, and restored tab
+paths, legacy `config.json`, serve-registered projects, and restored tab
 projects into the global `<Vcode home>/config.toml`. Existing global
 `[[plugins]]` entries win by name, so project or legacy entries never overwrite a
 server the user already configured globally. Source files are left untouched, and
@@ -219,14 +219,14 @@ recreated repeatedly from an old project config.
 ## Manual Migration Rescue
 
 If Vcode has already created the new home directory but some legacy data was
-not present yet, or if the desktop app was opened before the old paths were
+not present yet, or if the web UI was opened before the old paths were
 available, run the migration rescue command from either frontend:
 
 ```text
 /migrate
 ```
 
-In the CLI TUI, type `/migrate` into the chat input. In the desktop app, type the
+In the CLI TUI, type `/migrate` into the chat input. In the web UI, type the
 same command into the composer. The command prints progress notices while it:
 
 1. checks legacy config and credentials,

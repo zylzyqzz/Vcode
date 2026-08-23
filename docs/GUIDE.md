@@ -17,7 +17,7 @@
 - [Configuration paths](./CONFIG_PATHS.md)
 - [Reasoning language](./REASONING_LANGUAGE.md)
 - [Custom OpenAI-compatible providers](#custom-openai-compatible-providers)
-- [Desktop hooks](#desktop-hooks)
+- [Lifecycle hooks](#lifecycle-hooks)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Permissions & sandbox](#permissions--sandbox)
 - [Plugins (MCP)](#plugins-mcp)
@@ -35,7 +35,7 @@ built-in defaults**. Starting with **Vcode v1.8.1**, the user config lives at
 Fields marked user/global only, including agent step limits, are not overridden
 by `./Vcode.toml`.
 Provider entries name secrets with `api_key_env`, while the secret values live in
-Vcode's global `<Vcode home>/.env`, shared by CLI and desktop. Project
+Vcode's global `<Vcode home>/.env`, shared by CLI and serve. Project
 `.env`, home `.env`, inherited shell environment variables, legacy credentials,
 and the OS keyring are not provider-key runtime fallbacks; legacy credentials are
 only migration sources. Project `.env` still feeds workspace-scoped,
@@ -44,7 +44,7 @@ provider keys or Vcode control variables. See
 [Configuration paths](./CONFIG_PATHS.md) for the full `config.toml` and `.env`
 structure.
 
-For the desktop and CLI usage of visible reasoning language, see
+For the CLI usage of visible reasoning language, see
 [Reasoning language](./REASONING_LANGUAGE.md).
 
 ```toml
@@ -52,7 +52,7 @@ default_model = "deepseek-flash"   # executor; set [agent].planner_model to add 
 # language    = "zh"               # ui language; empty = auto-detect from $LANG / $Vcode_LANG
 
 [ui]
-# shortcut_layout = "desktop"      # classic|desktop; compatibility setting
+# shortcut_layout = "classic"     # classic|desktop; compatibility setting
 # cursor_shape = "underline"       # block|underline|bar; CLI/TUI text cursor
 
 [agent]
@@ -166,14 +166,14 @@ For development runs, prefix the command that starts the process, for example:
 Vcode_MEMORY_COMPILER_LLM_CLASSIFICATION=true wails dev -forcebuild
 ```
 
-Packaged desktop apps launched from the OS app launcher may not inherit variables
+Processes launched from the OS GUI may not inherit shell variables
 from your interactive terminal; start the app from an environment-managed launcher
 when you intentionally want this advanced switch enabled.
 
 ## Serve web frontend
 
 `Vcode serve` starts the same local engine behind a browser UI. Use it when
-you want a desktop-style surface without installing the desktop app, when running
+you want a GUI-style surface, when running
 Vcode on a remote development box through a tunnel, or when you want a
 shareable view of a live session.
 
@@ -216,7 +216,7 @@ user-global `default_model`.
 
 ## Custom OpenAI-compatible providers
 
-In the desktop app, open **Settings -> Model -> Access -> Add model service ->
+In the web UI, open **Settings -> Model -> Access -> Add model service ->
 Custom provider** for proxies, aggregators, or self-hosted services that speak
 the OpenAI-compatible chat API or Anthropic-compatible Messages API.
 
@@ -274,14 +274,14 @@ For Anthropic-compatible services, such as some coding-plan endpoints, choose
 
 | Field | What it controls | When to change it |
 | --- | --- | --- |
-| `api_key_env` | The environment-variable name used for this provider's API key. Desktop-saved key values are stored in Vcode home `.env` under this name; the TOML config stores only the name. | Change it when several providers need distinct keys, or leave it blank for a service that does not require an API key. |
+| `api_key_env` | The environment-variable name used for this provider's API key. Key values are stored in Vcode home `.env` under this name; the TOML config stores only the name. | Change it when several providers need distinct keys, or leave it blank for a service that does not require an API key. |
 | `models_url` | The URL used only for model discovery. Chat requests still use the API address or Full URL above. | Set it when `/models` or `/v1/models` is not where the gateway exposes its model list. |
 | Extra request headers | Static HTTP headers, one `Header: value` per line. | Use for gateways such as OpenRouter that require `HTTP-Referer`, `X-Title`, or similar site headers. Keep bearer/API keys in the key field instead of duplicating them here. |
 | Extra request body | A JSON object merged into the top-level chat request body. | Use only for provider-specific flags such as `{"enable_thinking": true}`. Vcode still owns core fields such as `model`, `messages`, `tools`, `stream`, and `thinking`, and null values are rejected. |
 | Authorization: Bearer | For Anthropic-compatible providers, sends the saved API key as `Authorization: Bearer <key>` instead of `x-api-key`. | Enable it only when the gateway documents Bearer auth, such as MiniMax Global or Vercel AI Gateway. |
 | Model capability mode | Which reasoning request protocol Vcode should use for this provider. | Keep **Auto-detect** unless the gateway is misdetected or the model docs require a specific reasoning format. |
 | Thinking override | Provider-specific override for `thinking.type`. | Keep **Auto** unless the backend documents `enabled`, `disabled`, or `adaptive`. Unsupported values can make some OpenAI-compatible gateways reject the request. |
-| Balance URL | Optional endpoint for wallet/balance lookup. | Set it when the provider exposes a balance endpoint and you want the desktop status bar to show it. |
+| Balance URL | Optional endpoint for wallet/balance lookup. | Set it when the provider exposes a balance endpoint and you want the status bar to show it. |
 | Context window | The maximum number of tokens this provider keeps in context. `0` means provider default. | Set it when the model's real context size differs from Vcode's default or built-in metadata. |
 
 Model capability mode options:
@@ -319,9 +319,9 @@ extra_body  = { enable_thinking = true }
 fields such as `model`, `messages`, `tools`, `stream`, and `thinking` under its
 own control.
 
-## Desktop hooks
+## Lifecycle hooks
 
-Desktop hooks run local commands at lifecycle events such as `SessionStart`,
+Lifecycle hooks run local commands at lifecycle events such as `SessionStart`,
 `UserPromptSubmit`, `PreToolUse`, and `PreCompact`. A successful `SessionStart`
 hook may write plain text to stdout, or return JSON with
 `hookSpecificOutput.additionalContext`; Vcode injects that text once into the
@@ -337,8 +337,8 @@ events.
 
 The injected hook context is dynamic current-turn context. It does not change
 the stable system prompt, memory prefix, or tool schema, though dynamic content
-can still reduce cache reuse for that turn. The detailed desktop hook schema and
-trust model are documented in [the Chinese desktop hooks guide](./DESKTOP_HOOKS.zh-CN.md).
+can still reduce cache reuse for that turn. The hook schema and trust model follow the plugin package
+conventions described in [Plugin packages](./PLUGIN_PACKAGES.md).
 
 ## Keyboard shortcuts
 
@@ -354,111 +354,8 @@ For CLI/TUI text input, `[ui].cursor_shape` accepts `underline`, `block`, or
 `bar`. The default is `underline` because terminal block cursors can visually
 cover double-width CJK characters in some mixed-language input. Set it to
 `block` to keep the old terminal-style cursor, or `bar` for a thin insertion
-cursor. This setting does not change desktop or web text fields.
+cursor. This setting does not change web text fields.
 
-### Desktop GUI
-
-Desktop shortcuts are managed from **Settings → Shortcuts**. Pick a row, press a
-new key combination, and Vcode saves it for the desktop app. Conflicting
-bindings are rejected so one shortcut never triggers two actions. Press `?` or
-use the help button in the topic bar to open the shortcuts sheet; it is generated
-from the same shortcut registry, so it reflects any custom bindings.
-
-Global shortcuts:
-
-| Key or control | What it does | Notes |
-| --- | --- | --- |
-| `Cmd+K` on macOS, `Ctrl+K` on Windows/Linux | Toggles the command palette | The palette focuses search when it opens; `Esc` closes it. |
-| `Cmd+,` on macOS, `Ctrl+,` on Windows/Linux | Opens Settings | Use **Shortcuts** in Settings to customize desktop bindings. |
-| `Cmd+W` on macOS, `Ctrl+W` on Windows/Linux | Closes the active top tab | The last tab is kept by the normal close-tab guard. |
-| `Cmd+B` / `Ctrl+B` | Shows or hides the left sidebar | Same action as clicking the sidebar toggle. |
-| `Cmd+Shift+B` / `Ctrl+Shift+B` | Expands or collapses the most recent shell output | Same action as clicking the collapsed shell-output hint. |
-| `Cmd+1`-`Cmd+9` on macOS, `Ctrl+1`-`Ctrl+9` elsewhere | Jumps to the matching visible chat in the sidebar | Hold `Cmd`/`Ctrl` briefly to reveal the numbered badges. Existing custom shortcuts that already use the same key take precedence. |
-| `Cmd++`, `Cmd+-`, `Cmd+0` on macOS; `Ctrl++`, `Ctrl+-`, `Ctrl+0` elsewhere | Increases, decreases, or resets text size | `=` is accepted for the plus key on keyboards that report it that way. |
-| `?` | Opens the keyboard shortcuts sheet | The sheet shows the current effective desktop bindings. |
-
-Composer shortcuts:
-
-| Key or control | What it does | Notes |
-| --- | --- | --- |
-| `Enter` | Sends the current message | IME composition confirmation is left alone. |
-| `Shift+Enter` | Inserts a newline | The composer keeps focus. |
-| `Shift+Tab` | Toggles Plan on/off | Plan is read-only planning and does not cycle Ask/Auto/YOLO. |
-| `Cmd+Y` / `Ctrl+Y` | Toggles YOLO on/off | Turning YOLO off restores the previous Ask/Auto base when known. |
-| `Cmd+V` on macOS, `Ctrl+V` on Windows/Linux | Pastes clipboard content | Clipboard images are attached; images can also be dropped into the composer. |
-| Plain `Up` / `Down` at the prompt boundary | Recalls older or newer submitted prompts | Modified arrows and native text navigation stay with the textarea. |
-| `Esc` while a turn is running | Cancels the running turn | If the turn has not produced a response yet, the draft is restored. |
-
-Menus and controls:
-
-| Key or control | What it does | Notes |
-| --- | --- | --- |
-| `Up` / `Down` in slash, `@`, or past-chat menus | Moves the highlighted item | Past-chat search uses the same navigation keys. |
-| `Enter` / `Tab` in those menus | Accepts the highlighted item | Directory-like entries can keep the menu open for the next level. |
-| `Esc` in those menus | Closes the current menu or returns from past-chat search | Regular typing continues after the menu closes. |
-| Ask / Auto / YOLO approval controls | Picks the tool approval posture directly | Clicking these controls is unchanged by keyboard shortcuts. |
-| Tool approval card | `Left` / `Right`, `Enter`, `1`-`4`, `Esc` | Move the highlighted action, confirm it, pick a numbered action, or deny. The default highlighted action is Allow once. |
-| Plan approval card | `Left` / `Right`, `Enter`, `1`-`3`, `Esc` | Move between Revise plan, Start execution, and Exit plan. The default highlighted action is Start execution. |
-| Plan control | Toggles Plan on/off | Same mode as `Shift+Tab`. |
-| Goal item in the collaboration menu | Starts, views, or clears Goal | Goal is not in any keyboard cycle. |
-
-### CLI / TUI
-
-Chat and transcript shortcuts:
-
-| Key or command | What it does | Notes |
-| --- | --- | --- |
-| `Enter` | Sends the current message | While a turn is running, non-empty input is queued as follow-up feedback. |
-| `Shift+Enter`, `Alt+Enter`, or `Ctrl+J` | Inserts a newline | Plain `Enter` is reserved for send/confirm. |
-| Plain `Up` / `Down` while idle | Recalls older or newer submitted prompts | In a running turn, the same keys navigate queued follow-up feedback. |
-| `PageUp` / `PageDown` | Scrolls the transcript | Works regardless of the current chat state. |
-| `Ctrl+Home` / `Ctrl+End` | Jumps to the top or bottom of the transcript | Useful after long tool output. |
-| `Ctrl+L` or `/cls` | Clears only the visible transcript | The LLM context, session file, tools, memory, and plugins stay loaded. Use `/clear` when you want to discard the conversation context. |
-| `Esc` | Backs out of the current action | It un-sends a just-submitted turn before any reply, cancels a running turn, or clears non-empty input. |
-| Double `Esc` on an empty idle composer | Opens the rewind picker | Same entry point as `/rewind`. |
-| Transcript text selection | Copies transcript text | The full-screen TUI enables mouse reporting, so drag in the transcript to select text in-app; releasing the mouse copies it automatically, and `Ctrl+C`/`Super+C`/`Meta+C` or right-clicking the active selection copy it again. |
-| `/mouse` | Toggles in-app mouse capture | Off hands the mouse back to your terminal, restoring its native click-drag selection and right-click context menu, at the cost of in-app drag-select, the transcript scrollbar, and wheel-scroll. Set `Vcode_DISABLE_MOUSE=1` to start every session with it off. |
-| `Ctrl+C` | Copies, cancels, clears, or quits | Copies an active transcript selection first. Otherwise it cancels a running turn, clears non-empty input, or quits on a second empty-composer press. |
-| `Ctrl+D` | Quits the TUI | Immediate quit. |
-| `Ctrl+V`, `Ctrl+Shift+V`, `Meta+V`, or `Super+V` | Pastes clipboard content | The CLI tries an image first, then falls back to text or file references. |
-| `/paste-image` | Pastes a clipboard image | Use it when you want image-only paste or the terminal handles text paste itself. |
-| A line starting with `!` | Runs a shell command directly | The command runs locally without asking the model. |
-
-Mode and display shortcuts:
-
-| Key or command | What it does | Notes |
-| --- | --- | --- |
-| `Shift+Tab` | Toggles Plan on/off | Plan is read-only planning and does not cycle Ask/Auto/YOLO. |
-| `Ctrl+Y` | Toggles YOLO on/off | Turning YOLO off restores the previous Ask/Auto base when known. Terminals that forward Command/Super may also send `Cmd+Y`, but `Ctrl+Y` is the reliable terminal shortcut. |
-| `--yolo`, `--dangerously-skip-permissions` | Starts chat in YOLO | Same runtime mode as `Ctrl+Y`. |
-| `Ctrl+O` | Toggles verbose reasoning display | Also available through `/verbose`. |
-| `Ctrl+B` | Expands or collapses long shell output | Long shell-output hint lines can also be clicked in the transcript; text selection is handled in-app while the full-screen TUI has mouse reporting enabled. |
-| Ask / Auto | No keyboard cycle | Ask is the default interactive base. Auto is not entered through `Shift+Tab`; use clients or APIs that expose the tool approval posture directly. |
-| `/goal <objective>`, `/goal --research <objective>`, `/goal --simple <objective>`, `/goal status`, `/goal clear` | Starts, checks, or clears Goal | Goal is not in any keyboard cycle; clearly long-horizon goals automatically enable AutoResearch. Ordinary prompts with strong AutoResearch signals are also upgraded into Goal. |
-| `/migrate`, `/migrate --from <legacy-dir>` | Retries legacy migration or imports sessions from a chosen v0.x source | Use `--from` for custom Windows v0.52 install/data directories; it imports sessions only. See [Configuration paths](./CONFIG_PATHS.md). |
-
-Picker and approval shortcuts:
-
-| Context | Keys | What they do |
-| --- | --- | --- |
-| Slash or `@` completion | `Up` / `Down`, `Tab` / `Enter`, `Esc` | Move, accept, or close the completion menu. |
-| Tool approval prompt | `y`/`1`, `a`/`2`, `p`/`3`, `n`/`4`, `Enter`, `Esc`, `Ctrl+C` | Allow once, allow for session, persist allow, deny, accept default allow once, deny, or cancel the turn. |
-| Ask question card | `Up`/`Down` or `j`/`k`, `Left`/`Right` or `h`/`l`, `Space`, `Enter`, `1`-`9`, `Esc`, `Ctrl+C` | Navigate answers/tabs, toggle multi-select answers, submit/activate, pick numbered options, dismiss, or cancel the turn. |
-| Rewind picker | `Up`/`Down` or `j`/`k`, `Enter`, `b`, `c`, `d`, `f`, `s`, `u`, `Esc` | Choose a turn, apply both/conversation/code/fork/summarize actions, or go back/close. |
-| Resume picker | `Up`/`Down` or `j`/`k`, `Enter`, `Esc` | Choose a saved session or close the picker. |
-| MCP import picker | `Up`/`Down` or `j`/`k`, `Space`, `Enter`, `Esc` / `Ctrl+C` | Move, select servers, import selected servers, or cancel. |
-| MCP manager | `Up`/`Down` or `j`/`k`, `Enter`, `Left`/`Right` or `h`/`l`, `r`, number keys, `q` / `Ctrl+C` | Navigate server lists/details, refresh, choose actions, or close. |
-| `/clear` confirmation | Arrow keys or `j`/`k` / `Tab`, `Enter`, `y`, `n`, `Esc` / `Ctrl+C` | Toggle Clear/Cancel, confirm clear, or cancel. |
-
-Mode meanings:
-
-| Mode | Meaning |
-| --- | --- |
-| Ask | Prompts for fallback writer approvals. |
-| Auto | Auto-allows fallback approvals; explicit `ask` / `deny` rules still apply. |
-| YOLO | Skips ordinary tool approval prompts; `deny`, user `ask` questions, plan approval prompts, and MCP read-only trust prompts still wait. |
-| Plan | Keeps the next work read-only until a plan is approved or Plan is turned off. |
-| Goal | Pursues a saved objective until complete, blocked, or cleared. |
 
 ## Permissions & sandbox
 
@@ -510,10 +407,10 @@ command = "github-mcp"
 trusted_read_only_tools = ["issue_read", "pull_request_read"]
 ```
 
-The desktop MCP panel keeps this as an advanced management surface: expand a
+The MCP panel keeps this as an advanced management surface: expand a
 configured server and open its tools list, then use **Pre-trust read-only** or a
 per-tool **Pre-trust** button only when you want to approve tools before they are
-needed. Use **Untrust** to remove a remembered reader. The desktop writes the raw
+needed. Use **Untrust** to remove a remembered reader. Vcode writes the raw
 MCP tool names to `trusted_read_only_tools` in the owning config source: project
 `.mcp.json` servers are updated under
 `mcpServers.<server>.trusted_read_only_tools`, while ordinary Vcode plugins
@@ -543,7 +440,7 @@ headers = { Authorization = "Bearer ${STRIPE_KEY}" }
 
 Enabled MCP servers start connecting automatically in the background after a
 session begins, so chat stays usable while tools come online. Use `/mcp` or the
-desktop MCP panel to refresh status, reconnect a server, inspect failures, or
+MCP panel to refresh status, reconnect a server, inspect failures, or
 disable a server for the current session.
 
 **Already have an `.mcp.json`?** Drop it in the project root and Vcode
@@ -586,7 +483,7 @@ auto-memory facts. During agent turns, the read-only `history` and `memory`
 tools let the model retrieve prior session decisions, compacted-history
 archives, and saved facts on demand instead of injecting that dynamic state into
 the stable system prompt. `/forget <name>` archives a saved fact rather than
-deleting it permanently; the CLI/TUI and desktop memory panel can show those
+deleting it permanently; the CLI/TUI memory panel can show those
 archived files for traceability, but they are not searched as active memory.
 Agent-initiated `remember` and `forget` calls always ask for fresh human approval
 and show a compact preview of the saved or archived memory before they run.
@@ -595,7 +492,7 @@ tools instead of auto-approving them.
 Retrieval keeps the top BM25 result while trimming weak common-word matches, and
 0-result responses suggest narrower, more distinctive follow-up searches.
 Memory v5 is enabled by default across the CLI/TUI, `Vcode serve`, and the
-desktop app because they all share the same local controller. It records local,
+client because they all share the same local controller. It records local,
 project-scoped execution traces and compiler state under Vcode home, then
 compiles the next user turn into a compact execution contract only when prior
 outcomes produce actionable constraints. Early turns may only write traces and
@@ -610,7 +507,7 @@ system prompt, provider prefix, or tool schemas.
 Toggle future turns with `/memory-v5 off|observe|compact|on|status` inside an
 interactive session, or with `Vcode config memory-v5 off|observe|compact|on|status`
 from a shell/script.
-Desktop users can also use Settings → General → Memory v5. Settings → Updates →
+Web UI users can also use Settings → General → Memory v5. Settings → Updates →
 Share aggregate quality metrics controls the optional aggregate upload. When
 enabled, that upload may include only anonymous
 count/size buckets such as injection on/off, compiled-token bucket, IR-overhead
@@ -628,7 +525,7 @@ Vcode home:
 memory_compiler = { enabled = true, verbosity = "observe" }
 ```
 
-The CLI can use Memory v5 for local turns, but it does not run the desktop
+The CLI can use Memory v5 for local turns, but it does not run the web-UI
 aggregate metrics upload pipeline. When `Vcode run --metrics <path>` is used,
 the JSON also includes content-free `memory_compiler_*` summary fields and a
 `memory_compiler_turn_details` array with per-turn injection state, compiled token

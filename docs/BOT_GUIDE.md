@@ -6,7 +6,7 @@
 &nbsp;·&nbsp;
 <a href="./GUIDE.md">General guide</a>
 
-> For desktop and CLI users. This guide explains how to connect Feishu, Lark,
+> For CLI users. This guide explains how to connect Feishu, Lark,
 > WeChat, and QQ bots, how to use Vcode from IM, and how approvals, Ask
 > questions, YOLO, and bot commands work.
 
@@ -26,7 +26,7 @@
 ## What the bot does
 
 After a bot is connected, you can send Vcode messages from Feishu, Lark,
-WeChat, or QQ. The desktop app or `Vcode bot start` process handles the
+WeChat, or QQ. The `Vcode bot start` process handles the
 model, tools, permissions, sandboxing, and local context, then sends progress
 and results back to the IM channel.
 
@@ -36,7 +36,7 @@ Common uses:
 - Trigger tool calls from IM and receive progress or final results in the chat.
 - Approve or deny sensitive actions such as file writes or shell commands.
 - Enable YOLO for trusted temporary work so ordinary tool approvals are skipped.
-- Open the matching desktop IM session to inspect context, cost, tokens, and tool
+- Inspect context, cost, tokens, and tool
   traces.
 
 ## Where it runs
@@ -48,25 +48,25 @@ saved local account state.
 
 There are two supported entry points:
 
-- **Desktop runtime**: configure bots in **Settings -> Bots**. The desktop app
+- **Headless runtime**: configure bots in the config file. The gateway
   starts the gateway, keeps status in the app, persists per-connection tool
   approval mode changes, and lets you open matching local IM sessions.
 - **CLI runtime**: run `Vcode bot start` for a headless long-lived process.
   It uses the same config, allowlist, routes, queue settings, pairing store,
-  adapters, and project/session index as the desktop runtime.
+  adapters, and project/session index as any other runtime.
 
 The normal `Vcode run` command does not automatically start the IM gateway.
-Remote bot behavior is active only while the desktop bot runtime is running or
+Remote bot behavior is active only while the bot runtime is running or
 while a `Vcode bot start` process is alive.
 
 ## Connect the four channels
 
-Open the Vcode desktop app and go to **Settings -> Bots**. In **Add IM Bot**,
+Run `vcode bot add`. In the interactive prompt,
 choose a channel and scan the QR code.
 
 ```mermaid
 flowchart LR
-  A["Open desktop settings"] --> B["Bots"]
+  A["vcode bot add"] --> B["choose adapter"]
   B --> C["Add IM Bot"]
   C --> D{"Choose channel"}
   D --> E["Scan with Feishu to create a PersonalAgent"]
@@ -78,7 +78,7 @@ flowchart LR
   G --> I
   H --> I
   I --> J["Send the first IM message"]
-  J --> K["Desktop creates the matching session"]
+  J --> K["Gateway creates the matching session"]
 ```
 
 ### Feishu
@@ -142,7 +142,7 @@ provider request cannot block the gateway indefinitely.
 
 ## Run the bot headlessly
 
-The desktop app is the easiest way to create and test bot connections, but the
+The interactive setup is the easiest way to create and test bot connections, and the
 runtime itself can also run as a long-lived headless gateway:
 
 ```sh
@@ -157,7 +157,7 @@ WeChat iLink account; `qq` selects the configured QQ bot. Use `--dir` to attach
 incoming messages to a project workspace and `--model` to override the default
 model for this process.
 
-The headless gateway uses the same config records as the desktop app:
+The headless gateway uses the same config records as the interactive setup:
 
 - `[[bot.connections]]` identifies each IM input. `provider` is the adapter
   family (`feishu`, `weixin`, or `qq`), while `domain` distinguishes variants
@@ -178,16 +178,16 @@ The headless gateway uses the same config records as the desktop app:
   route wins and can override `workspace_root`, `model`, and
   `tool_approval_mode`.
 - `session_mappings` are filled from inbound messages with the remote chat ID
-  and scope. The desktop UI can open the matching conversation once the mapping
+  and scope. The CLI can open the matching conversation once the mapping
   also has a local `session_id` target, such as a saved `path:` session target
-  from a desktop-managed bot runtime or a manually configured mapping.
+  from a gateway-managed bot runtime or a manually configured mapping.
 - The bot's project/session index is intentionally bounded to configured
   `workspace_root` values, route workspaces, active bot sessions, and saved
   `session_mappings`. Commands such as `/use project` and `/attach session`
   can only jump to those indexed targets; arbitrary local directories are not
   accepted from IM text.
 
-Access control is still mandatory. New desktop-created bots should normally set
+Access control is still mandatory. New newly created bots should normally set
 access inside that bot's own detail panel, which saves to `[[bot.connections]]`
 or `[bot.qq].access`. The legacy global `[bot.allowlist]` remains a fallback for
 older configs and for connections without active per-bot access. You can
@@ -214,7 +214,7 @@ If `qq_admins`, `feishu_admins`, `weixin_admins`, or the matching
 are also admin-only. `/approve` and `/deny` require an approver or admin. When
 no role lists are set, existing allowlisted users keep the previous command
 behavior for compatibility. Remote users go through the same controller,
-permission policy, tool approval mode, and sandbox rules as local desktop or CLI
+permission policy, tool approval mode, and sandbox rules as local web UI or CLI
 turns.
 
 ```toml
@@ -266,7 +266,7 @@ curl -X POST http://127.0.0.1:37913/send \
 sequenceDiagram
   participant U as "User"
   participant IM as "Feishu / Lark / WeChat / QQ"
-  participant R as "Vcode desktop or bot start"
+  participant R as "vcode bot start"
   participant T as "Local tools and model"
 
   U->>IM: "Send a request"
@@ -287,7 +287,7 @@ sequenceDiagram
   end
 ```
 
-The **Bots** entry in the desktop sidebar lists connected bots. After the first
+The **Bots** entry in the web UI sidebar lists connected bots. After the first
 IM message arrives, you can open the matching local session from there to inspect
 context, tool traces, cost, and runtime metrics.
 
@@ -346,7 +346,7 @@ These commands work in Feishu, Lark, WeChat, and QQ.
 | `/projects [query]` | List indexed project workspaces | `/projects Vcode` |
 | `/use project <id\|name>` | Route this remote session to an indexed project | `/use project p1` |
 | `/use project default` | Clear the project override and return to configured routing | `/use project default` |
-| `/sessions search <query>` | Search indexed desktop/bot sessions | `/sessions search release bug` |
+| `/sessions search <query>` | Search indexed bot sessions | `/sessions search release bug` |
 | `/attach session <id\|query>` | Continue this remote session from an indexed `path:` transcript | `/attach session s1` |
 | `/search all <query>` | Search file contents across indexed project roots | `/search all TODO` |
 
@@ -379,7 +379,7 @@ Project and session navigation:
   workspaces, active bot sessions, and saved session mappings.
 - `/use project <id|name>` pins the current remote session to one indexed
   project. `/use project default` clears the override.
-- `/sessions search <query>` searches indexed desktop and bot session metadata.
+- `/sessions search <query>` searches indexed bot session metadata.
 - `/attach session <id|query>` continues the remote session from an indexed
   `path:` transcript.
 - `/search all <query>` searches file contents across indexed project roots.
@@ -397,7 +397,7 @@ IM attachment extraction can be added at the adapter layer.
 
 ## Approvals and YOLO
 
-Vcode bots use the same permission system as the desktop app. Ask mode is the
+Vcode bots use the same permission system as the web UI. Ask mode is the
 default: sensitive tool calls such as file writes and shell commands request
 confirmation first.
 
@@ -440,7 +440,7 @@ Bindings are stored in the user's Vcode data, not inside the app bundle:
 - Bot connections, remote IDs, allowlists, model choices, and approval modes are
   stored in the user config.
 - Feishu and Lark secrets are stored in Vcode's global
-  `<Vcode home>/.env`, shared by CLI and desktop.
+  `<Vcode home>/.env`, shared by CLI and serve.
 - The WeChat scanned account token is stored in the Vcode user data
   directory.
 - The QQ App ID is stored in user config; the App Secret is stored under the
@@ -461,7 +461,7 @@ You may need to bind again if:
 | Symptom | What to check |
 | --- | --- |
 | QR code says the link expired | Generate a new QR code in Settings; QR codes expire (Feishu, Lark, WeChat only — QQ uses manual setup and has no QR code). |
-| Connected but no reply | Make sure the desktop bot runtime or `Vcode bot start` process is running, the bot connection is enabled, and the sender ID is allowlisted, paired, or access is open. |
+| Connected but no reply | Make sure the bot runtime or `Vcode bot start` process is running, the bot connection is enabled, and the sender ID is allowlisted, paired, or access is open. |
 | Feishu or Lark button action fails | Send the text command from the card, such as `/approve <id>` or `/deny <id>`. |
 | QQ button action fails | Same as Feishu/Lark — send the text command from the card, such as `/approve <id>` or `/deny <id>`. |
 | WeChat reply `1` does nothing | Numeric shortcuts only work when an approval or Ask is pending; use the full command if needed. |

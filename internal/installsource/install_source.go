@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"vcode/internal/config"
 	"vcode/internal/pluginpkg"
@@ -98,7 +99,8 @@ func NewTool(opts Options) tool.Tool {
 	}
 	client := opts.HTTPClient
 	if client == nil {
-		client = &http.Client{}
+		// 20s floor so a hung source registry cannot stall the whole pipeline.
+		client = &http.Client{Timeout: 20 * time.Second}
 	}
 	// install_source fetches untrusted URLs (SKILL.md, .mcp.json, GitHub
 	// manifests); guard the dial against SSRF the same way web_fetch does, so a

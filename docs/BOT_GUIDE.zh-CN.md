@@ -6,7 +6,7 @@
 &nbsp;·&nbsp;
 <a href="./GUIDE.zh-CN.md">通用指南</a>
 
-> 面向桌面端和 CLI 用户。本文说明如何连接飞书、Lark、微信和 QQ 机器人，
+> 面向CLI和 CLI 用户。本文说明如何连接飞书、Lark、微信和 QQ 机器人，
 > 如何在 IM 里使用 Vcode，以及审批、问答、YOLO 和常用命令的交互方式。
 
 ## 目录
@@ -24,7 +24,7 @@
 
 ## 能做什么
 
-连接机器人后，你可以在飞书、Lark、微信或 QQ 里给 Vcode 发消息，让桌面端
+连接机器人后，你可以在飞书、Lark、微信或 QQ 里给 Vcode 发消息，让CLI
 Vcode 或 `Vcode bot start` 进程在本机执行同一套模型、工具、权限与
 沙盒逻辑。
 
@@ -34,7 +34,7 @@ Vcode 或 `Vcode bot start` 进程在本机执行同一套模型、工具、权�
 - 在 IM 中触发工具调用，并把执行过程和结果回传到聊天窗口。
 - 遇到写文件、执行命令等敏感操作时，在 IM 中审批或拒绝。
 - 对临时测试任务开启 YOLO，跳过普通工具审批。
-- 打开桌面端对应 IM 会话，继续查看上下文、成本、tokens 和工具轨迹。
+- 打开CLI对应 IM 会话，继续查看上下文、成本、tokens 和工具轨迹。
 
 ## 在哪里运行
 
@@ -44,24 +44,24 @@ Bot gateway 是一套共享的 Go runtime。核心行为在 Windows、macOS 和 
 
 目前有两个入口：
 
-- **桌面端 runtime**：在 **设置 -> 机器人** 中配置。桌面端会启动 gateway，
+- **CLI runtime**：在 **设置 -> 机器人** 中配置。CLI会启动 gateway，
   在应用内维护状态，持久化每个连接的工具审批模式变化，并允许打开匹配的
   本地 IM 会话。
 - **CLI runtime**：执行 `Vcode bot start` 启动无界面长期进程。它复用
-  与桌面端相同的配置、白名单、路由、队列设置、配对存储、适配器和
+  与CLI相同的配置、白名单、路由、队列设置、配对存储、适配器和
   项目/会话索引。
 
-普通 `Vcode run` 不会自动启动 IM 网关。只有桌面端 bot runtime 正在运行，
+普通 `Vcode run` 不会自动启动 IM 网关。只有CLI bot runtime 正在运行，
 或存在一个存活的 `Vcode bot start` 进程时，远端 IM bot 能力才会生效。
 
 ## 连接四个渠道
 
-打开桌面端 Vcode，进入 **设置 -> 机器人**。在 **添加 IM Bot** 区域选择
+打开CLI Vcode，进入 **设置 -> 机器人**。在 **添加 IM Bot** 区域选择
 渠道并扫码。
 
 ```mermaid
 flowchart LR
-  A["打开桌面端设置"] --> B["机器人"]
+  A["打开CLI设置"] --> B["机器人"]
   B --> C["添加 IM Bot"]
   C --> D{"选择渠道"}
   D --> E["飞书扫码创建 PersonalAgent"]
@@ -73,7 +73,7 @@ flowchart LR
   G --> I
   H --> I
   I --> J["在 IM 中发送第一条消息"]
-  J --> K["桌面端创建对应会话"]
+  J --> K["CLI创建对应会话"]
 ```
 
 ### 飞书
@@ -130,7 +130,7 @@ HTTP 调用使用带超时的 client，避免平台请求卡住后无限阻塞 g
 
 ## 无界面运行 Bot
 
-桌面端是创建和测试 Bot 连接最简单的入口，但 Bot 运行时也可以作为长期运行的
+CLI是创建和测试 Bot 连接最简单的入口，但 Bot 运行时也可以作为长期运行的
 无界面网关启动：
 
 ```sh
@@ -144,7 +144,7 @@ Vcode bot start --channels qq,feishu,lark,weixin --dir /path/to/project
 Bot。`--dir` 用来把远端消息绑定到某个项目工作区，`--model` 可以为这个进程
 临时覆盖默认模型。
 
-无界面网关复用桌面端保存的同一套配置：
+无界面网关复用CLI保存的同一套配置：
 
 - `[[bot.connections]]` 标识每个 IM 输入。`provider` 是适配器类型
   （`feishu`、`weixin` 或 `qq`），`domain` 用来区分飞书和 Lark 等变体。
@@ -161,15 +161,15 @@ Bot。`--dir` 用来把远端消息绑定到某个项目工作区，`--model` �
   或 thread ID 做更细粒度路由；空匹配字段表示通配，按配置顺序第一个命中。
   命中后可覆盖 `workspace_root`、`model` 和 `tool_approval_mode`。
 - `session_mappings` 会根据收到的远端消息自动填充远端 chat ID 和作用域。
-  只有当该映射同时具备本地 `session_id` 目标时，桌面端才能打开对应会话；
-  例如桌面端托管的 Bot runtime 保存了 `path:` 会话目标，或用户手动配置了
+  只有当该映射同时具备本地 `session_id` 目标时，CLI才能打开对应会话；
+  例如CLI托管的 Bot runtime 保存了 `path:` 会话目标，或用户手动配置了
   映射目标。
 - Bot 的项目/会话索引只来自已配置的 `workspace_root`、route workspace、
   当前活跃 bot 会话，以及已保存的 `session_mappings`。`/use project` 和
   `/attach session` 只能跳到这些已索引目标；IM 文本里临时输入的任意本地
   目录不会被接受。
 
-访问控制仍然是必需项。桌面端新建的 Bot 通常建议在该 Bot 自己的详情面板里
+访问控制仍然是必需项。CLI新建的 Bot 通常建议在该 Bot 自己的详情面板里
 设置谁可以使用，这会保存到 `[[bot.connections]]` 或 `[bot.qq].access`。
 旧的全局 `[bot.allowlist]` 仍然作为兼容兜底，适用于旧配置或没有启用单
 Bot access 的连接。你可以有意设置 `allow_all = true`，也可以为单个 Bot
@@ -193,7 +193,7 @@ Vcode bot pairing reject CODE
 `/search all` 也只允许 admin 使用。`/approve` 和 `/deny` 只允许 approver
 或 admin 使用。没有配置角色列表时，为兼容旧配置，已允许的用户保持原有
 命令能力。远端用户进入的是同一个 Vcode controller、权限策略、工具
-审批模式和沙盒边界，和本地桌面端或 CLI 回合一致。
+审批模式和沙盒边界，和本地CLI或 CLI 回合一致。
 
 ```toml
 [bot.allowlist]
@@ -242,7 +242,7 @@ curl -X POST http://127.0.0.1:37913/send \
 sequenceDiagram
   participant U as "用户"
   participant IM as "飞书 / Lark / 微信 / QQ"
-  participant R as "Vcode 桌面端或 bot start"
+  participant R as "Vcode CLI或 bot start"
   participant T as "本机工具与模型"
 
   U->>IM: "发送需求"
@@ -263,7 +263,7 @@ sequenceDiagram
   end
 ```
 
-桌面端左侧的 **机器人** 入口会显示已连接 Bot。收到第一条 IM 消息后，可以
+CLI左侧的 **机器人** 入口会显示已连接 Bot。收到第一条 IM 消息后，可以
 从这里打开对应本地会话，查看上下文、工具轨迹、成本和运行指标。
 
 ## 四种渠道的交互差异
@@ -350,7 +350,7 @@ mid-turn guidance 注入，而不是等完整回合结束。`queue_cap` 和 `que
   已保存 session mapping 的工作区。
 - `/use project <id|名称>` 会把当前远端会话固定到某个已索引项目；
   `/use project default` 会清除覆盖。
-- `/sessions search <关键词>` 搜索已索引桌面端和 bot 会话元数据。
+- `/sessions search <关键词>` 搜索已索引CLI和 bot 会话元数据。
 - `/attach session <id|关键词>` 从已索引 `path:` transcript 继续当前远端
   会话。
 - `/search all <关键词>` 跨已索引项目根目录检索文件内容；有 `rg` 时优先用
@@ -367,7 +367,7 @@ Feishu、Weixin、QQ 适配器当前仍以文本事件为主，普通 IM 附件�
 
 ## 审批与 YOLO
 
-Vcode 的机器人沿用桌面端权限系统。默认是询问模式：写文件、执行命令等
+Vcode 的机器人沿用CLI权限系统。默认是询问模式：写文件、执行命令等
 敏感工具调用会先请求确认。
 
 ```mermaid
@@ -405,7 +405,7 @@ YOLO 的边界很重要：
 绑定信息保存在用户配置目录，而不是 app 包内：
 
 - Bot 连接、远端 ID、白名单、模型和审批模式保存在用户配置文件。
-- 飞书和 Lark 的密钥保存在 CLI 与桌面端共用的 Vcode 全局
+- 飞书和 Lark 的密钥保存在 CLI 与CLI共用的 Vcode 全局
   `<Vcode home>/.env`。
 - 微信扫码后的账号 token 保存在 Vcode 的用户数据目录。
 - QQ 的 App ID 保存在用户配置文件；App Secret 通过配置的环境变量
@@ -425,7 +425,7 @@ YOLO 的边界很重要：
 | 现象 | 可以检查 |
 | --- | --- |
 | 扫码提示链接失效 | 回到设置页重新生成二维码；二维码有有效期（飞书、Lark、微信；QQ 不使用扫码，请检查手动配置）。 |
-| 已连接但没有回复 | 确认桌面端 bot runtime 或 `Vcode bot start` 进程正在运行，Bot 连接已开启，用户 ID 在白名单内、已配对或允许所有人。 |
+| 已连接但没有回复 | 确认CLI bot runtime 或 `Vcode bot start` 进程正在运行，Bot 连接已开启，用户 ID 在白名单内、已配对或允许所有人。 |
 | 飞书或 Lark 按钮提示失败 | 直接发送卡片里的命令，例如 `/approve <id>` 或 `/deny <id>`。 |
 | QQ 按钮提示失败 | 与飞书/Lark 相同 —— 直接发送卡片里的命令，例如 `/approve <id>` 或 `/deny <id>`。 |
 | 微信回复 `1` 没反应 | 只有存在待审批或 Ask 时数字快捷回复才生效；也可以使用完整命令。 |

@@ -7,7 +7,6 @@ everything you need to get started.
 
 - **Go 1.25+** — the project targets the latest stable Go release
 - **Git** — for version control
-- **Node.js** (optional) — only if you work on the desktop app (`desktop/`)
 
 ## Getting started
 
@@ -22,24 +21,23 @@ go test ./...              # runs the full test suite
 
 | Directory | Purpose |
 |-----------|---------|
-| `cmd/Vcode` | CLI entry point |
-| `internal/agent` | Agent loop, session, coordinator |
-| `internal/cli` | TUI, subcommands, setup wizard |
-| `internal/control` | Transport-agnostic controller |
-| `internal/config` | TOML configuration loading |
-| `internal/tool/builtin` | Built-in tools (bash, read_file, …) |
-| `internal/provider` | Model-backend abstraction |
-| `internal/provider/openai` | OpenAI-compatible provider |
-| `internal/plugin` | MCP client (stdio + HTTP) |
-| `internal/event` | Typed event stream |
-| `internal/hook` | Shell hooks (PreToolUse, …) |
-| `internal/memory` | Vcode.md hierarchy + auto-memory |
-| `internal/skill` | Skill discovery from Markdown |
-| `internal/sandbox` | OS-level sandboxing |
-| `internal/serve` | HTTP/SSE server frontend |
-| `internal/checkpoint` | Snapshot-based rewind |
-| `desktop/` | Wails-based desktop app (separate Go module) |
-| `docs/` | Engineering spec, migration guide |
+cmd/Vcode` | CLI entry point |
+internal/agent` | Agent loop, session, coordinator |
+internal/cli` | TUI, subcommands, setup wizard |
+internal/control` | Transport-agnostic controller |
+internal/config` | TOML configuration loading |
+internal/tool/builtin` | Built-in tools (bash, read_file, …) |
+internal/provider` | Model-backend abstraction |
+internal/provider/openai` | OpenAI-compatible provider |
+internal/plugin` | MCP client (stdio + HTTP) |
+internal/event` | Typed event stream |
+internal/hook` | Shell hooks (PreToolUse, …) |
+internal/memory` | Vcode.md hierarchy + auto-memory |
+internal/skill` | Skill discovery from Markdown |
+internal/sandbox` | OS-level sandboxing |
+internal/serve` | HTTP/SSE server frontend |
+internal/checkpoint` | Snapshot-based rewind |
+docs/` | Engineering spec, migration guide |
 
 ### Dependency direction
 

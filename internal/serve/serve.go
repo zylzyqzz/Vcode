@@ -8,11 +8,13 @@ package serve
 import (
 	"context"
 	"crypto/sha256"
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,6 +34,13 @@ import (
 
 //go:embed index.html
 var indexHTML []byte
+
+// pwaStatic holds the installable-client assets: web app manifest, service
+// worker, and icons. They are served from unauthenticated routes so browsers
+// can evaluate installability before the user logs in.
+//
+//go:embed static
+var pwaStatic embed.FS
 
 // Server wires a controller to its HTTP surface. The Broadcaster must be the
 // same sink the controller was constructed with, so events reach SSE clients.
@@ -215,6 +224,7 @@ func (s *Server) HandlerWithCORS(origin string) http.Handler {
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.index)
+	mountPWARoutes(mux)
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("GET /history", s.history)
 	mux.HandleFunc("GET /context", s.context)
@@ -241,7 +251,34 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /skills", s.skills)
 	mux.HandleFunc("GET /todos", s.todos)
 	mux.HandleFunc("POST /delete-session", s.deleteSession)
-	return logMiddleware(s.auth.middleware(csrfGuard(mux)))
+	// The PWA assets are registered on the same mux but dispatched before the
+	// auth gate: the manifest, icons, and service worker carry no secrets, and
+	// browsers must be able to fetch them (from the login page, with no
+	// session) to evaluate installability.
+	guarded := s.auth.middleware(csrfGuard(mux))
+	return logMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isPublicPWAPath(r.URL.Path) {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		guarded.ServeHTTP(w, r)
+	}))
+}
+
+// isPublicPWAPath reports whether the request targets the unauthenticated
+// installable-client assets. Single-segment "/icons/{name}" paths are handed
+// to the mux, whose allowlist handler 404s unknown names; anything deeper
+// (e.g. "/icons/a/b") falls through to the auth gate rather than being served
+// as the app shell.
+func isPublicPWAPath(path string) bool {
+	switch path {
+	case "/sw.js", "/manifest.webmanifest", "/apple-touch-icon.png":
+		return true
+	}
+	if strings.HasPrefix(path, "/icons/") && !strings.Contains(path[len("/icons/"):], "/") {
+		return true
+	}
+	return false
 }
 
 // csrfGuard rejects state-changing requests that don't carry a JSON content type.
@@ -311,6 +348,56 @@ func (s *Server) RunGraceful(ctx context.Context, addr string) error {
 		}
 		return nil
 	}
+}
+
+// mountPWARoutes registers the public installable-client (PWA) assets. They
+// sit outside the auth gate: the manifest, icons, and service worker carry no
+// secrets, and browsers fetch them without session context when deciding
+// whether the site is installable.
+func mountPWARoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /manifest.webmanifest", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		serveStaticFile(w, "manifest.webmanifest")
+	})
+	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		// The service worker controls its updates; the browser must always
+		// revalidate this file or a stale worker can pin a stale shell.
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Service-Worker-Allowed", "/")
+		serveStaticFile(w, "sw.js")
+	})
+	mux.HandleFunc("GET /icons/{name}", func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		switch name {
+		case "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png":
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		ct := mime.TypeByExtension(filepath.Ext(name))
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Cache-Control", "public, max-age=604800")
+		serveStaticFile(w, name)
+	})
+	mux.HandleFunc("GET /apple-touch-icon.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "public, max-age=604800")
+		serveStaticFile(w, "apple-touch-icon.png")
+	})
+}
+
+func serveStaticFile(w http.ResponseWriter, name string) {
+	b, err := fs.ReadFile(pwaStatic, "static/"+name)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	_, _ = w.Write(b)
 }
 
 func (s *Server) index(w http.ResponseWriter, _ *http.Request) {

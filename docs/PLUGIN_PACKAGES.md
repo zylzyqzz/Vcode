@@ -58,7 +58,7 @@ CLI install flags:
 Running `Vcode plugin install <source>` without `--dry-run` or `--yes`
 refuses to write files and prints a reminder to rerun with one of those flags.
 Install and remove commands print the structured JSON response from the same
-install-source backend used by the desktop UI.
+install-source backend used by the web UI.
 
 Installed plugin state is stored in:
 
@@ -129,7 +129,7 @@ After installing, enabling, disabling, or updating a plugin from a separate
 terminal while a session is already running, start a new `Vcode` session or
 reopen `/skills` to verify the current session sees the expected skills.
 
-## Desktop Settings
+## Web UI Settings
 
 Open **Settings -> Plugins** to install and manage plugin packages without using
 the CLI.
@@ -178,12 +178,12 @@ Expand a plugin row to manage it:
 - **Doctor** checks the plugin manifest and reports warnings or diagnostics.
 - **Remove plugin** uninstalls the package after confirmation.
 
-### Use Installed Plugins From Desktop
+### Use Installed Plugins From the Web UI
 
-The desktop settings page uses the same runtime model as the CLI:
+The web UI uses the same runtime model as the CLI:
 
 - Expand an installed plugin to see its **How to use** section.
-- In any desktop session, type `/plugins` to list installed plugins, or
+- In any session, type `/plugins` to list installed plugins, or
   `/plugins show <name>` to see the same usage details from the chat surface.
 - Skills are shown with suggested direct commands such as `/plan`; they are also
   discoverable from `/skills` in a session.
@@ -248,15 +248,3 @@ Plugin hooks receive these environment variables:
 - `Vcode_HOME`
 - `Vcode_WORKSPACE_ROOT`
 - `CLAUDE_PROJECT_DIR`
-
-## Desktop Backend Methods
-
-Desktop exposes plugin package operations through Wails methods:
-
-- `Plugins`
-- `PlanPluginInstall`
-- `InstallPlugin`
-- `RemovePlugin`
-- `SetPluginEnabled`
-- `UpdatePlugin`
-- `PluginDoctor`

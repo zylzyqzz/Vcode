@@ -367,6 +367,11 @@ func TestServeIndexPagePassesLanguagePreferenceToClient(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	// On Windows, os.UserConfigDir() reads %AppData% directly (not via HOME),
+	// so VCODE_HOME and APPDATA must both point at the sandbox or the test
+	// picks up a real user config and the pinned language changes.
+	t.Setenv("VCODE_HOME", home)
+	t.Setenv("APPDATA", home)
 
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{Sink: bc})

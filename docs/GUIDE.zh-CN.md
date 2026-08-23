@@ -17,7 +17,7 @@
 - [配置路径](./CONFIG_PATHS.zh-CN.md)
 - [思考语言](./REASONING_LANGUAGE.zh-CN.md)
 - [自定义 OpenAI-compatible provider](#自定义-openai-compatible-provider)
-- [桌面端 Hooks](./DESKTOP_HOOKS.zh-CN.md)
+- [serve 网页端 Hooks](./DESKTOP_HOOKS.zh-CN.md)
 - [快捷键](#快捷键)
 - [权限与沙盒](#权限与沙盒)
 - [插件（MCP）](#插件mcp)
@@ -31,12 +31,12 @@
 **Vcode v1.8.1** 开始，用户配置位于 macOS/Linux 的
 `~/.Vcode/config.toml`，Windows 为 `%AppData%\Vcode\config.toml`；迁移和相关数据路径见
 [配置路径](./CONFIG_PATHS.zh-CN.md)。标注为“仅用户/全局”的字段（包括 agent 轮数上限）不会被 `./Vcode.toml` 覆盖。
-Provider 通过 `api_key_env` 命名密钥，真实密钥值保存在 CLI 与桌面端共用的
+Provider 通过 `api_key_env` 命名密钥，真实密钥值保存在 CLI 与 serve共用的
 Vcode 全局 `<Vcode home>/.env`。项目 `.env`、home `.env`、继承的 shell 环境变量、旧 credentials 和系统 keyring 都不再作为 provider key 的运行时 fallback；旧凭据只作为迁移来源读取。项目 `.env` 仍会作为当前 workspace 范围内的 MCP/plugin 非 provider `${VAR}` 展开来源，但不会导入 provider key 或 Vcode 控制变量。全局 `config.toml` 和 `.env` 的完整结构见
 [配置路径](./CONFIG_PATHS.zh-CN.md)。
 
-桌面端和 CLI 端的可见思考语言设置，见 [思考语言](./REASONING_LANGUAGE.zh-CN.md)。
-桌面端 Hooks 的 JSON 配置、事件 key 和 payload 字段，见 [桌面端 Hooks](./DESKTOP_HOOKS.zh-CN.md)。
+serve 网页端和 CLI 端的可见思考语言设置，见 [思考语言](./REASONING_LANGUAGE.zh-CN.md)。
+serve 网页端 Hooks 的 JSON 配置、事件 key 和 payload 字段，见 [serve 网页端 Hooks](./DESKTOP_HOOKS.zh-CN.md)。
 `SessionStart` hook 可通过 stdout 或 `hookSpecificOutput.additionalContext` 把插件/工作流 bootstrap 内容一次性注入下一轮真实用户输入上下文，而不是写入稳定 system prompt。
 插件包可通过 `hooks/session-start-codex` 或插件根目录 `CLAUDE.md` 提供该启动上下文；Claude 风格 `.claude/settings.json` command hooks 也会按同名事件映射到 Vcode hooks。
 
@@ -146,12 +146,12 @@ Vcode_MEMORY_COMPILER_LLM_CLASSIFICATION=true Vcode
 Vcode_MEMORY_COMPILER_LLM_CLASSIFICATION=true wails dev -forcebuild
 ```
 
-从系统图形界面直接启动的打包桌面端通常不会继承交互式终端里的环境变量；如果确实要开启这个高级开关，
+从系统图形界面直接启动的打包serve 网页端通常不会继承交互式终端里的环境变量；如果确实要开启这个高级开关，
 请从受环境变量管理的启动方式打开应用。
 
 ## Serve Web 前端
 
-`Vcode serve` 会用同一个本地 Vcode 引擎启动浏览器 UI。适合不安装桌面端但想用可视化界面、
+`Vcode serve` 会用同一个本地 Vcode 引擎启动浏览器 UI。适合不安装serve 网页端但想用可视化界面、
 在远程开发机上通过 tunnel 使用，或把当前会话临时共享给浏览器查看的场景。
 
 ```bash
@@ -189,7 +189,7 @@ Goal、由 `todo_write` 工具驱动的实时 Todo 面板，以及已配置 prov
 
 ## 自定义 OpenAI-compatible provider
 
-在桌面端打开 **设置 -> 模型 -> 接入 -> 添加模型服务 -> 自定义供应商**，用于接入代理、
+在serve 网页端打开 **设置 -> 模型 -> 接入 -> 添加模型服务 -> 自定义供应商**，用于接入代理、
 聚合平台或自建 OpenAI-compatible chat API / Anthropic-compatible Messages API 服务。
 
 常用服务优先使用 **添加模型服务 -> 推荐预设**。Vcode 可以预填可编辑的自定义 provider：
@@ -236,14 +236,14 @@ Anthropic-compatible 网关需要的 Bearer 认证、Ollama Cloud max-effort 支
 
 | 字段 | 作用 | 什么时候改 |
 | --- | --- | --- |
-| `api_key_env` | 该 provider 使用的 API key 环境变量名。桌面端保存的真实 key 会写入 Vcode home `.env` 的同名变量；TOML 配置里只保存变量名。 | 多个 provider 需要不同 key 时改名；服务不需要 API key 时可以留空。 |
+| `api_key_env` | 该 provider 使用的 API key 环境变量名。serve 网页端保存的真实 key 会写入 Vcode home `.env` 的同名变量；TOML 配置里只保存变量名。 | 多个 provider 需要不同 key 时改名；服务不需要 API key 时可以留空。 |
 | `models_url` | 只用于自动发现模型列表的 URL。聊天请求仍使用上方的 API 地址或完整 URL。 | `/models` 或 `/v1/models` 不是该网关模型列表地址时填写。 |
 | 额外请求头 | 静态 HTTP header，一行一个 `Header: value`。 | OpenRouter 等网关要求 `HTTP-Referer`、`X-Title` 或类似站点来源 header 时使用。API key 仍放在上方密钥字段，不要重复写到这里。 |
 | 额外请求体 | 合并到聊天请求体顶层的 JSON 对象。 | 仅用于服务商专用开关，例如 `{"enable_thinking": true}`。`model`、`messages`、`tools`、`stream`、`thinking` 等核心字段仍由 Vcode 控制，且不接受 `null` 值。 |
 | Authorization: Bearer | 对 Anthropic-compatible provider，把已保存的 API key 用 `Authorization: Bearer <key>` 发送，而不是 `x-api-key`。 | MiniMax Global、Vercel AI Gateway 等网关文档明确要求 Bearer 认证时开启。 |
 | 模型能力模式 | 指定 Vcode 对该 provider 使用哪种 reasoning 请求协议。 | 默认用“自动识别”。只有网关被误判，或模型文档要求特定 reasoning 格式时再切换。 |
 | Thinking 覆盖 | provider 专用的 `thinking.type` 覆盖项。 | 默认用 Auto。只有后端文档明确支持 `enabled`、`disabled` 或 `adaptive` 时再手动指定；不支持的值可能让中转站拒绝请求。 |
-| 余额查询 URL | 可选的钱包余额查询接口。 | 服务商提供余额接口，且希望桌面端状态栏显示余额时填写。 |
+| 余额查询 URL | 可选的钱包余额查询接口。 | 服务商提供余额接口，且希望serve 网页端状态栏显示余额时填写。 |
 | 上下文窗口 | 该 provider 可保留的最大上下文 token 数。`0` 表示使用模型服务默认值。 | 模型实际上下文大小和 Vcode 默认值或内置元数据不一致时填写。 |
 
 模型能力模式选项：
@@ -266,7 +266,7 @@ Thinking 覆盖选项：
 
 ## 快捷键
 
-这里按使用端来写，因为用户通常是先知道“我现在在桌面端/CLI”，再找对应按键。
+这里按使用端来写，因为用户通常是先知道“我现在在serve 网页端/CLI”，再找对应按键。
 核心模式规则很小：`Shift+Tab` 只管 Plan，`Ctrl/Cmd+Y` 只管 YOLO，粘贴继续走系统粘贴快捷键。
 
 `[ui].shortcut_layout` 仍被接受以兼容旧配置，但下面的快捷键行为已经跨布局统一。
@@ -274,51 +274,7 @@ Thinking 覆盖选项：
 CLI/TUI 文本输入可通过 `[ui].cursor_shape` 设置光标形状，支持 `underline`、`block`
 和 `bar`。默认值是 `underline`，因为部分终端中的 block 光标会在中英混排输入时覆盖
 CJK 双宽字符，造成视觉错位。想保留旧的终端块状光标可设为 `block`，想使用细插入线可设为
-`bar`。该设置不影响桌面端或 Web 输入框。
-
-### 桌面端 GUI
-
-桌面端快捷键在 **设置 → 快捷键** 中管理。选择一行后按下新的组合键，Vcode 会为桌面端保存该绑定。
-如果新组合键和已有动作冲突，会拒绝保存，避免一个快捷键触发两个动作。按 `?` 或点击 topic bar
-里的帮助按钮可打开快捷键帮助表；帮助表由同一份快捷键 registry 生成，因此会同步显示自定义后的绑定。
-
-全局快捷键：
-
-| 按键或控件 | 作用 | 说明 |
-| --- | --- | --- |
-| macOS `Cmd+K`，Windows/Linux `Ctrl+K` | 打开或关闭命令面板 | 打开时会聚焦搜索框；`Esc` 关闭命令面板。 |
-| macOS `Cmd+,`，Windows/Linux `Ctrl+,` | 打开设置 | 在设置里的 **快捷键** 页可自定义桌面端绑定。 |
-| macOS `Cmd+W`，Windows/Linux `Ctrl+W` | 关闭当前顶部标签页 | 最后一个标签页仍由原有关闭保护保留。 |
-| `Cmd+B` / `Ctrl+B` | 显示或隐藏左侧边栏 | 和点击侧边栏开关是同一个动作。 |
-| `Cmd+Shift+B` / `Ctrl+Shift+B` | 展开或收起最近的 shell 输出 | 和点击折叠 shell 输出提示是同一个动作。 |
-| macOS `Cmd+1`-`Cmd+9`，其它平台 `Ctrl+1`-`Ctrl+9` | 跳转到侧边栏中对应编号的可见对话 | 短暂按住 `Cmd`/`Ctrl` 会显示编号标记；已有自定义快捷键占用相同按键时，自定义动作优先生效。 |
-| macOS `Cmd++`、`Cmd+-`、`Cmd+0`；其它平台 `Ctrl++`、`Ctrl+-`、`Ctrl+0` | 放大、缩小或重置文字大小 | 对把加号上报为 `=` 的键盘也兼容。 |
-| `?` | 打开键盘快捷键帮助表 | 帮助表显示当前实际生效的桌面端绑定。 |
-
-输入框快捷键：
-
-| 按键或控件 | 作用 | 说明 |
-| --- | --- | --- |
-| `Enter` | 发送当前消息 | IME 组合输入确认不会被截获。 |
-| `Shift+Enter` | 插入换行 | 输入框保持焦点。 |
-| `Shift+Tab` | 切换 Plan 开/关 | Plan 是只读规划，不会循环 Ask/Auto/YOLO。 |
-| `Cmd+Y` / `Ctrl+Y` | 切换 YOLO 开/关 | 关闭 YOLO 时会尽量恢复之前的 Ask/Auto 基底。 |
-| macOS `Cmd+V`，Windows/Linux `Ctrl+V` | 粘贴剪贴板内容 | 剪贴板图片会作为附件加入；图片也可以拖进输入框。 |
-| 输入边界处的普通 `Up` / `Down` | 回放更旧或更新的已提交提示词 | 带修饰键的方向键和原生文本导航仍交给 textarea。 |
-| 运行中按 `Esc` | 取消当前 turn | 如果后端尚未开始回复，会恢复草稿。 |
-
-菜单与控件：
-
-| 按键或控件 | 作用 | 说明 |
-| --- | --- | --- |
-| 斜杠、`@` 或 past-chat 菜单中的 `Up` / `Down` | 移动高亮项 | past-chat 搜索框使用同一套导航键。 |
-| 这些菜单中的 `Enter` / `Tab` | 接受高亮项 | 类似目录的条目可能继续打开下一层菜单。 |
-| 这些菜单中的 `Esc` | 关闭当前菜单或退出 past-chat 搜索 | 关闭后可继续正常输入。 |
-| Ask / Auto / YOLO 审批控件 | 直接选择工具审批姿态 | 点击操作不受快捷键规则影响。 |
-| 工具审批卡片 | `Left` / `Right`、`Enter`、`1`-`4`、`Esc` | 移动高亮动作、确认当前高亮、直接选择编号动作，或拒绝。默认高亮是“允许一次”。 |
-| 计划审批卡片 | `Left` / `Right`、`Enter`、`1`-`3`、`Esc` | 在“修改计划 / 开始执行 / 退出计划”之间移动。默认高亮是“开始执行”。 |
-| Plan 控件 | 切换 Plan 开/关 | 和 `Shift+Tab` 是同一个模式。 |
-| 协作菜单里的 Goal | 启动、查看或清除 Goal | Goal 不进入任何快捷键循环。 |
+`bar`。该设置不影响serve 网页端或 Web 输入框。
 
 ### CLI / TUI
 
@@ -415,9 +371,9 @@ command = "github-mcp"
 trusted_read_only_tools = ["issue_read", "pull_request_read"]
 ```
 
-桌面端 MCP 面板保留为高级管理入口：展开已配置的服务器并打开工具列表；只有在想提前批准工具时，
+serve 网页端 MCP 面板保留为高级管理入口：展开已配置的服务器并打开工具列表；只有在想提前批准工具时，
 才使用 **预先信任只读** 或单个工具旁的 **预先信任**。用 **取消信任** 可以移除已记住的读工具。
-桌面端会把 raw MCP tool name 写入拥有该服务器的配置源：项目 `.mcp.json` 里的服务器会更新到
+serve 网页端会把 raw MCP tool name 写入拥有该服务器的配置源：项目 `.mcp.json` 里的服务器会更新到
 `mcpServers.<server>.trusted_read_only_tools`，普通 Vcode plugin 会写入用户级 Vcode config。
 只信任无副作用的读取工具；create/update/delete 这类写工具应保持未信任。
 
@@ -442,7 +398,7 @@ headers = { Authorization = "Bearer ${STRIPE_KEY}" }
 ```
 
 启用的 MCP 服务器会在会话开始后于后台自动连接，因此工具上线期间聊天仍可正常使用。
-用 `/mcp` 或桌面端 MCP 面板可刷新状态、重连服务器、查看失败原因，或在当前会话内禁用某个服务器。
+用 `/mcp` 或serve 网页端 MCP 面板可刷新状态、重连服务器、查看失败原因，或在当前会话内禁用某个服务器。
 
 **已有 Claude Code 的 `.mcp.json`？** 直接放到项目根目录，Vcode 会原样读取——其
 `mcpServers` 规范（`command`/`args`/`env`、`type`/`url`/`headers`、`${VAR}` 展开）
@@ -474,12 +430,12 @@ headers = { Authorization = "Bearer ${STRIPE_KEY}" }
 `/memory` 会同时列出记忆文档（`Vcode.md` / `AGENTS.md`）和已保存的 auto-memory 条目。
 在 agent 回合中，只读的 `history` 和 `memory` 工具可以按需检索历史 session 决策、
 compaction archive 和已保存事实；这些动态内容不会被塞进稳定的 system prompt 前缀。
-`/forget <name>` 会把已保存事实归档而不是永久删除；CLI/TUI 和桌面记忆面板能显示归档文件用于追溯，
+`/forget <name>` 会把已保存事实归档而不是永久删除；CLI/TUI 记忆面板能显示归档文件用于追溯，
 但它们不会作为 active memory 被检索。检索会保留 BM25 最强命中，同时裁掉弱的泛词命中；
 agent 发起的 `remember` 和 `forget` 每次都会要求新的人工确认，并在执行前展示将保存或归档的记忆摘要；
 Guardian 审查不能代替用户批准，非交互运行会拒绝这类工具而不是自动批准。
 0 结果会提示 agent 改用更少、更有区分度的词继续查。
-Memory v5 在 CLI/TUI、`Vcode serve` 和桌面端默认开启，因为这些入口共用同一套本地
+Memory v5 在 CLI/TUI、`Vcode serve` 和serve 网页端默认开启，因为这些入口共用同一套本地
 controller。它会把本地、按项目隔离的执行轨迹和编译器状态写在 Vcode home 下，并且只有
 历史结果产生可行动约束时，才把下一轮用户输入编译成精简 execution contract。早期轮次可能
 只写入轨迹而不注入任何内容。默认的 `verbosity = "observe"` 只做本地学习和内容无关指标，
@@ -489,7 +445,7 @@ controller。它会把本地、按项目隔离的执行轨迹和编译器状态�
 memory 审批，也不会修改 cache-stable system prompt、Provider 前缀或工具 schema。
 
 交互式会话里可用 `/memory-v5 off|observe|compact|on|status` 控制后续轮次，也可在 shell/脚本里用
-`Vcode config memory-v5 off|observe|compact|on|status`。桌面端还可以在设置 → 通用 → Memory v5 中控制。
+`Vcode config memory-v5 off|observe|compact|on|status`。serve 网页端还可以在设置 → 通用 → Memory v5 中控制。
 设置 → 更新 → 共享聚合质量指标控制可选的聚合上报；开启后只会上报匿名计数/大小桶，例如是否
 注入、编译后 token 大小桶、IR overhead 大小桶、memory reference 数量、constraint/risk/step
 数量，以及记忆图规模桶。它不会包含记忆正文、提示词、工具输出、文件路径、ID、密钥、base URL
@@ -504,7 +460,7 @@ CLI/TUI 和 `Vcode serve` 使用同一个 user/global 配置。项目内的 `Vco
 memory_compiler = { enabled = true, verbosity = "observe" }
 ```
 
-CLI 可以在本地轮次使用 Memory v5，但不会运行桌面端的聚合指标上传管线。使用
+CLI 可以在本地轮次使用 Memory v5，但不会运行serve 网页端的聚合指标上传管线。使用
 `Vcode run --metrics <path>` 时，JSON 还会输出内容无关的 `memory_compiler_*` 汇总字段，
 以及 `memory_compiler_turn_details` 逐轮明细数组，包含是否注入、编译后 token 和 IR overhead
 估算、引用记忆/constraint/risk/step 数量，以及当前记忆图计数。
@@ -606,10 +562,10 @@ source 仍会启用可写 skill 工具，plan mode 下继续阻断。
 或 `Vcode config memory-v5 off|observe|compact|on|status`，并且只认用户级设置。只有明确想为
 reasoning-language 写项目级覆盖时，才给 shell 命令加 `--local`。
 
-桌面端“协作方式”菜单里的计划模式、目标模式和省 token 模式的使用方法与注意事项，
+serve 网页端“协作方式”菜单里的计划模式、目标模式和省 token 模式的使用方法与注意事项，
 见 [`COLLABORATION_MODES.zh-CN.md`](./COLLABORATION_MODES.zh-CN.md)。
 
-桌面端“工具权限”里的询问、自动和 Yolo 模式的区别与使用场景，
+serve 网页端“工具权限”里的询问、自动和 Yolo 模式的区别与使用场景，
 见 [`TOOL_APPROVAL_MODES.zh-CN.md`](./TOOL_APPROVAL_MODES.zh-CN.md)。
 
 分离 session（让各模型前缀缓存稳定）背后的取舍见

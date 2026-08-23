@@ -1,6 +1,6 @@
 # Vcode Database Boundaries
 
-The core Go CLI, desktop app and hosted `serve` runtime do not declare a repository-managed SQL database. Their sessions and configuration are filesystem/config based; storage behavior must be inspected by the target subsystem before changing it.
+The core Go CLI and hosted `serve` runtime do not declare a repository-managed SQL database. Their sessions and configuration are filesystem/config based; storage behavior must be inspected by the target subsystem before changing it.
 
 Cloudflare Workers own the repository-managed databases:
 
