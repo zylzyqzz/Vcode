@@ -89,7 +89,7 @@ type Config struct {
   full request URL. An entry declares either a single `model = "..."` or a
   `models = ["...", "..."]` list (with an optional `default`); the list form lets
   one vendor expose several models without re-declaring the endpoint/key. A
-  **model reference** (`default_model`, the `--model` flag, the desktop switcher)
+  **model reference** (`default_model`, the `--model` flag, the model switcher)
   resolves via `Config.ResolveModel`, which accepts a provider name (→ its default
   model), a bare model name, or an explicit `provider/model`. `context_window` /
   `price` are per-provider, so models that need distinct values stay separate
@@ -221,7 +221,7 @@ Long tasks eventually fill the model's context window. Vcode manages this with
   what already exists, `remember` saves or updates a fact, and `forget` removes
   a stale one from the active index while archiving the file for traceability.
   Archived memory files are visible in local management surfaces (`/memory`,
-  TUI, desktop panel) but are excluded from active-memory retrieval. Memory
+  TUI, web panel) but are excluded from active-memory retrieval. Memory
   search uses the same relative BM25 floor and guides the agent to fall back to
   history when exact original wording or tool output matters.
 - Agent-initiated `remember` and `forget` calls require a fresh human approval
@@ -333,7 +333,7 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
   read-only registry. Plan mode still allows `read_only_task` and
   `read_only_skill`, whose sub-agents receive only read-only research tools and
   safe foreground bash; writer-capable `task` delegation and full skill execution
-  remain blocked. The desktop MCP panel writes the same
+  remain blocked. The MCP panel writes the same
   `trusted_read_only_tools` raw-name list as an advanced management surface:
   **Pre-trust read-only** adds currently listed `readOnlyHint` tools, per-tool
   **Pre-trust** adds an audited reader manually, and **Untrust** removes it
@@ -354,7 +354,7 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
   execution, any fallback answer is labelled as a model assumption, not as a
   user decision.
 
-- **Collaboration mode is separate from tool approval.** The desktop composer
+- **Collaboration mode is separate from tool approval.** The composer
   presents collaboration as `normal` ("正常模式"), `plan` ("计划模式"), and
   `goal` ("目标模式"). `/goal <objective>` starts an autonomous, session-scoped
   active goal: the controller prepends goal context to user turns outside the
@@ -377,7 +377,7 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
   classification so weak words such as "long term", "optimize", "research", or
   "verify" do not create durable task state by themselves. `/goal clear` removes
   the active goal. Switching into plan/normal mode clears the active goal in the
-  desktop UI so the collaboration mode remains one of the three choices, while
+  web UI so the collaboration mode remains one of the three choices, while
   the underlying tool approval posture is preserved.
 
 | Tool approval posture | Tool approvals | Plan approval | MCP read-only trust | `ask` questions |
@@ -504,7 +504,7 @@ at `~/.Vcode/config.toml` on macOS/Linux and
 Fields marked user/global only, including agent step limits, are not overridden
 by project `Vcode.toml`.
 Provider entries name secrets with `api_key_env`; saved key values live in
-Vcode's global `<Vcode home>/.env`, shared by CLI and desktop. Project
+Vcode's global `<Vcode home>/.env`, shared by CLI and serve. Project
 `.env`, home `.env`, inherited shell environment variables, legacy credentials,
 and the OS keyring are not provider-key runtime fallbacks. Project `.env` still
 feeds workspace-scoped, non-provider `${VAR}` expansion for MCP/plugin settings
@@ -609,7 +609,7 @@ args    = []
 
 `[ui].cursor_shape` is normalized to `underline`, `block`, or `bar`; empty or
 unknown values fall back to `underline`. It applies to the Bubble Tea CLI/TUI
-textarea only, while desktop and browser inputs keep their platform-native
+textarea only, while web inputs keep their platform-native
 cursor behavior.
 
 `[serve]` controls the HTTP browser frontend used by `Vcode serve`. The

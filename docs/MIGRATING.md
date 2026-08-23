@@ -36,11 +36,11 @@ Vcode
 `latest` will stay on `0.x` for the foreseeable future, so installing or
 updating v2 always means `@next` (or a pinned `1.x`).
 
-Prebuilt archives (`Vcode-<os>-<arch>.tar.gz` / `.zip`) and the desktop
+Prebuilt archives (`Vcode-<os>-<arch>.tar.gz` / `.zip`) and the npm
 installer are attached to each GitHub release. These are a **separate channel**
-from npm: the installer drops a standalone desktop/binary build and does not
+from npm: the installer drops a standalone binary build and does not
 touch a CLI you installed with `npm i -g`, so the two coexist — an npm `0.53` in
-your shell alongside a `1.x` desktop app is expected, not a conflict. Or build
+your shell is expected, not a conflict. Or build
 from source:
 
 ```sh
@@ -65,14 +65,14 @@ legacy credentials into `<Vcode home>/.env` when a key is missing there, and
 imports past sessions from legacy session directories. Old files are left
 untouched, and Vcode prints a boot notice when it imports data. Each session lands in the
 workspace it belonged to (read from its v0.x sidecar meta, summary carried over
-as the title), so the desktop sidebar lists it under the right project; sessions
+as the title), so the sidebar lists it under the right project; sessions
 whose workspace no longer exists land in the global session dir. Imported
 sessions resume with `--resume` or the history panel. The config import only
 runs when no v1.8.1+ config exists yet — if v1.8.1+ wrote its config before your
 legacy data was in place nothing is overwritten, so copy any missing values
 across by hand.
 
-If the automatic pass missed data because you opened a v1.8.1+ CLI/desktop build
+If the automatic pass missed data because you opened a v1.8.1+ CLI build
 before the old paths were available, run `/migrate` from an interactive session.
 The command is available only in Go-based Vcode builds that include it; if you
 see `unknown command`, upgrade first. It prints progress while it checks legacy
@@ -119,7 +119,7 @@ and DeepSeek prefix-cache–oriented design.
   session or persistent trust choice prevents repeat prompts for the same MCP
   tool. Non-interactive runs still fail closed, so pre-seed
   `trusted_read_only_tools` or declare a concrete `mcp__<server>__<tool>` when no
-  user can approve. In the desktop MCP
+  user can approve. In the MCP
   panel, expand a server and use **Pre-trust read-only** for currently listed
   `readOnlyHint` tools, per-tool **Pre-trust** for audited readers, or
   **Untrust** to remove a tool; those actions write the same
@@ -130,7 +130,7 @@ and DeepSeek prefix-cache–oriented design.
   existing skill. Both expose only read-only tools and safe foreground bash, do
   not write resumable transcripts, and keep writer-capable `task` / `run_skill`
   blocked until after plan approval.
-- **No web dashboard** — the v2 line is terminal + desktop (Wails), by design.
+- **Web UI** — the v2 line is terminal + web (`vcode serve`), by design.
 - Some granular v1 tools are intentionally consolidated (e.g. file-management ops
   go through `bash`); a few v1 tools are not yet ported (tracked on Discussions).
 

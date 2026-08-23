@@ -75,6 +75,36 @@ func TestWorkspaceWriteConfinement(t *testing.T) {
 	}
 }
 
+// TestWriteToolsHonorConfinerOverAbsolutePath pins the contract that resolveIn
+// passes absolute paths through verbatim: every write tool must rely on the
+// WriteRoots confiner rather than path shape. If a future write tool resolves
+// an absolute path itself instead of going through the confiner, this test
+// keeps the escape from shipping silently.
+func TestWriteToolsHonorConfinerOverAbsolutePath(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	for _, name := range []string{"write_file", "move_file"} {
+		tl := byName(Workspace{Dir: t.TempDir()}.Tools())[name]
+		if tl == nil {
+			t.Fatalf("tool %q not registered", name)
+		}
+		var args map[string]any
+		switch name {
+		case "write_file":
+			args = map[string]any{"path": outside, "content": "x"}
+		case "move_file":
+			// Source inside the workspace, destination outside.
+			src := filepath.Join(t.TempDir(), "src.txt")
+			if err := os.WriteFile(src, []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			args = map[string]any{"source_path": src, "destination_path": outside}
+		}
+		if _, err := tl.Execute(context.Background(), argsJSON(t, args)); err == nil {
+			t.Errorf("%s should refuse an absolute path outside the workspace", name)
+		}
+	}
+}
+
 func TestWorkspaceMoveFileBindsAndConfines(t *testing.T) {
 	dir := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "evil.txt")

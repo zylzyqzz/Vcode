@@ -115,9 +115,9 @@ The intended workflow is:
 This avoids repeatedly paying retrieval cost for the same stable conclusion,
 while keeping the saved set small and auditable.
 
-## Desktop Candidate Suggestions
+## Web UI Candidate Suggestions
 
-The desktop Memory page can scan recent local sessions and produce draft
+The web UI Memory page can scan recent local sessions and produce draft
 candidates:
 
 - memory candidates from explicit long-lived preferences, rules, or project
@@ -127,7 +127,7 @@ candidates:
 This is intentionally a suggestion layer, not an automatic writer:
 
 - scanning can be run manually from the Memory page. Users may also enable a
-  desktop UI preference that scans automatically when the Suggestions tab opens;
+  web UI preference that scans automatically when the Suggestions tab opens;
 - candidates show their proposed body plus short evidence snippets before any
   write;
 - accepting a memory candidate writes through the controller's active memory
@@ -155,7 +155,7 @@ surfaces still expose them for traceability:
 
 - `/memory`;
 - CLI/TUI memory views;
-- desktop memory panel.
+- web UI memory panel.
 
 This is important because an incorrect memory can be more disruptive than no
 memory, but a hard delete makes it difficult to audit how the agent reached a
@@ -185,7 +185,7 @@ The approval subject is generated from the tool arguments before the
 External notification hooks only receive the tool name, not the memory body,
 because notification channels may be less private than the local UI.
 
-User-initiated memory edits in the desktop panel or CLI remain direct user
+User-initiated memory edits in the web UI panel or CLI remain direct user
 actions and do not go through the agent approval prompt.
 
 ## Boot Wiring
@@ -210,7 +210,7 @@ Local management surfaces distinguish active and archived memory:
 - Archived memories are read-only audit entries.
 - Candidate suggestions are drafts until the user confirms them.
 
-The desktop `Memory()` payload always returns non-nil arrays for docs, facts,
+The `Memory()` payload always returns non-nil arrays for docs, facts,
 archives, and scopes. This is a Wails JSON contract: nil Go slices encode as
 `null`, while the frontend expects arrays for `.map` and `.length`.
 
@@ -228,8 +228,8 @@ The change is covered across layers:
 - controller approval behavior under ask/auto/YOLO, including fresh approval and
   approval-preview visibility;
 - boot-level tool registration and real model tool-call execution;
-- desktop `Memory()` payload shape for active and archived facts;
-- desktop memory/skill candidate generation, confirmation writes, and non-nil
+- `Memory()` payload shape for active and archived facts;
+- web UI memory/skill candidate generation, confirmation writes, and non-nil
   suggestion arrays;
 - frontend CSS and TypeScript checks with generated Wails bindings.
 

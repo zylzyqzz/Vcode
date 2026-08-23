@@ -25,7 +25,7 @@ The setting is intentionally small:
 - `zh` asks visible reasoning to prefer Simplified Chinese.
 - `en` asks visible reasoning to prefer English.
 
-## Desktop
+## Web UI
 
 Open:
 
@@ -33,7 +33,7 @@ Open:
 Settings -> Models -> Usage -> Agent runtime -> Thinking language
 ```
 
-The desktop setting writes the user-level default. A project can still override
+The web UI setting writes the user-level default. A project can still override
 it with `./Vcode.toml`.
 
 ## CLI And TUI

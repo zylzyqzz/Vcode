@@ -1,7 +1,7 @@
 # Design: Checkpoints & Rewind
 
 Status: **Phase 1 + 2 implemented** — snapshot store, capture seam, the Esc-Esc /
-`/rewind` CLI picker, and the desktop hover-rewind, with the full Claude Code menu:
+`/rewind` CLI picker, and the web UI hover-rewind, with the full Claude Code menu:
 restore code / conversation / both, fork-from-here, and summarize from / up to
 here. Snapshot-based and aligned with Claude Code. An optional git-backed mode is
 the remaining (lower-priority) follow-up. Tracks the most requested missing
@@ -12,7 +12,7 @@ capability from v1 — an edit safety net / undo.
 Let a user rewind a session to a previous point and restore **code**,
 **conversation**, or **both** — without touching their git history. Aligned with
 Claude Code's rewind (Esc-Esc / `/rewind`), driven identically from the CLI and
-the desktop.
+the web UI.
 
 ## Mechanism: file snapshots, not git
 
@@ -77,7 +77,7 @@ type Checkpoint struct {
 ## Controller API (the one seam both frontends drive)
 
 Checkpoints live on `control.Controller`, beside `SetPlanMode` / `Compact` /
-`NewSession`, so the terminal TUI, the desktop webview, and the HTTP/SSE server
+`NewSession`, so the terminal TUI and the HTTP/SSE server
 drive rewind identically and none re-implement it.
 
 ```go
@@ -109,7 +109,7 @@ re-render uniformly.
 - On a conversation/both restore, the selected prompt is prefilled into the
   composer.
 
-## Desktop UX (aligned with the VS Code extension)
+## Web UI UX
 
 - Each user message in the transcript gets a hover **rewind** control → menu:
   **rewind code / rewind conversation / both / fork-from-here**.
@@ -132,7 +132,7 @@ re-render uniformly.
 
 1. **Phase 1**: snapshot store + `executeOne` capture seam + `Controller.Rewind`
    (code/conversation/both) + CLI picker (Esc-Esc + `/rewind`).
-2. **Phase 2**: desktop hover-rewind UI; "fork from here"; "summarize from/up to
+2. **Phase 2**: web UI hover-rewind UI; "fork from here"; "summarize from/up to
    here"; optional git-backed mode.
 
 ## Open questions

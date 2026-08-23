@@ -6,7 +6,7 @@ How Vcode ships, who can ship what, and the canary-before-stable flow.
 
 - **`master`** is the single development line (the v2 / 1.x trunk). Every PR merges here.
 - **Production is a tag, not a branch.** A release is a tagged snapshot of `master`:
-  `v1.4.0` (CLI), `npm-v1.4.0` (npm), `desktop-v1.4.0` (desktop).
+  `v1.4.0` (CLI), `npm-v1.4.0` (npm).
 - **`v1`** is the archived 1.0/legacy line — maintenance only.
 - **Hotfix** an already-released version by branching from its tag, fixing, and tagging again.
 
@@ -18,11 +18,10 @@ provides the pre-release buffer instead of a long-lived branch.
 | Surface | Stable | Pre-release buffer |
 |---|---|---|
 | npm | `latest` (0.x), `next` (1.x) | `canary` (`npm i Vcode@canary`) |
-| Desktop | R2 `latest/` pointer + release gateway | R2 `canary/` pointer + release gateway proxy (never on the GitHub releases page) |
 
-A canary build is isolated: it **never** moves `latest` / `next` / desktop `latest/`.
-Testers opt in explicitly. (Desktop builds carry `-X main.channel=canary`; npm versions
-ending in `-canary.N` publish under the `canary` dist-tag.)
+A canary build is isolated: it **never** moves `latest` / `next`.
+Testers opt in explicitly (npm versions ending in `-canary.N` publish under the
+`canary` dist-tag).
 
 ## Who can release what
 
@@ -37,24 +36,21 @@ the `release` environment deployment.
 
 > Repo settings backing this: Environments → `release` has esengine as a required
 > reviewer; `canary` has none. (Optional hardening: a tag ruleset restricting
-> `v*`/`npm-v*`/`desktop-v*` creation to esengine, so maintainers can't even start a
+> `v*`/`npm-v*` creation to esengine, so maintainers can't even start a
 > stable release.)
 
 ## The release loop
 
 1. **Develop** — PRs land on `master` (branch auto-deletes on merge).
 2. **Cut a canary** before the intended release (e.g. heading for `1.4.0`):
-   - Desktop: Actions → **Release desktop** → `channel: canary`, `base_version: 1.4.0`
    - CLI: Actions → **Release npm** → `base_version: 1.4.0`
-   - Publishes `1.4.0-canary.N` to the desktop R2 `canary/` pointer (no GitHub release) and npm `@canary`.
-3. **Test** — testers install `Vcode@canary` (CLI) or grab the desktop canary
-   build from its R2 link, and report bugs.
+   - Publishes `1.4.0-canary.N` to npm `@canary`.
+3. **Test** — testers install `Vcode@canary` and report bugs.
 4. **Fix** on `master` via PRs; re-cut the canary as needed (`canary.N` bumps).
-5. **Ship stable** when the canary is clean — push the three tags:
+5. **Ship stable** when the canary is clean — push the two tags:
    ```sh
-   git tag v1.4.0         && git push origin v1.4.0          # CLI binaries + Homebrew
-   git tag npm-v1.4.0     && git push origin npm-v1.4.0      # npm -> next
-   git tag desktop-v1.4.0 && git push origin desktop-v1.4.0  # desktop -> R2 latest/
+   git tag v1.4.0     && git push origin v1.4.0      # CLI binaries + Homebrew
+   git tag npm-v1.4.0 && git push origin npm-v1.4.0  # npm -> next
    ```
    Each stable run **waits for esengine to approve the `release` environment** before publishing.
 6. **Promote to default install** (optional, when 1.x should become the bare `npm i` target):
@@ -65,16 +61,8 @@ the `release` environment deployment.
 
 ## Notes
 
-- Canary version numbers use the workflow `run_number`, so the desktop and CLI canary
-  numbers differ (e.g. `canary.11` vs `canary.2`). Only monotonicity per channel matters.
+- Canary version numbers use the workflow `run_number`. Only monotonicity per channel matters.
 - A stable `-rc` tag (e.g. `npm-v1.4.0-rc.1`) still ships under `next`, not `canary`.
-- Desktop in-app updates use R2 first, then the `crash.Vcode.io` desktop release
-  gateway. The gateway resolves the `desktop-v*` release line directly and never uses
-  GitHub's repository-wide `/releases/latest`, because plain `v*` tags are the CLI
-  release line. Stable CLI releases also carry a compatibility `latest.json` asset so
-  older desktop builds that still use GitHub `latest` do not 404.
-- Canary uses R2 plus the same gateway proxy for the `canary/` pointer; it never
-  appears on the GitHub releases page.
 - Windows and Linux apply downloaded, minisign-verified artifacts in place. macOS
   applies in-app only for Developer ID signed and notarized builds; ad-hoc/local
   builds fall back to the download page.

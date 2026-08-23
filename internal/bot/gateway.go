@@ -576,7 +576,7 @@ func (gw *BotGateway) handleMessage(ctx context.Context, binding AdapterBinding,
 		if gw.offerPairing(ctx, binding.Adapter, msg) {
 			return
 		}
-		_ = gw.sendText(ctx, binding.Adapter, msg, "抱歉，您没有使用此 bot 的权限。")
+		gw.reply(ctx, binding.Adapter, msg, "抱歉，您没有使用此 bot 的权限。")
 		return
 	}
 	if gw.cfg.OnInbound != nil {
@@ -588,7 +588,7 @@ func (gw *BotGateway) handleMessage(ctx context.Context, binding AdapterBinding,
 	} else if normalized, ok := gw.normalizeAskShortcut(key, msg.Text); ok {
 		msg.Text = normalized
 	} else if _, ok := decisionShortcutCommand(msg.Text); ok && gw.sessions.IsActive(key) {
-		_ = gw.sendText(ctx, binding.Adapter, msg, "没有找到可匹配的待处理操作。请重新触发一次操作后回复编号，或按消息中的 ID 使用 /approve、/deny 或 /answer。")
+		gw.reply(ctx, binding.Adapter, msg, "没有找到可匹配的待处理操作。请重新触发一次操作后回复编号，或按消息中的 ID 使用 /approve、/deny 或 /answer。")
 		return
 	}
 
@@ -610,7 +610,7 @@ func (gw *BotGateway) handleMessage(ctx context.Context, binding AdapterBinding,
 				if cleanup != nil {
 					cleanup()
 				}
-				_ = gw.sendText(ctx, binding.Adapter, msg, "已收到，会并入当前任务。")
+				gw.reply(ctx, binding.Adapter, msg, "已收到，会并入当前任务。")
 				return
 			}
 		case QueueModeInterrupt:
@@ -619,7 +619,7 @@ func (gw *BotGateway) handleMessage(ctx context.Context, binding AdapterBinding,
 			result := gw.sessions.ReplacePending(key, msg)
 			gw.storeReactionCleanup(key, cleanup)
 			gw.logger.Info("bot active turn interrupted; newest message queued", "session", key[:8], "pending", result.Pending)
-			_ = gw.sendText(ctx, binding.Adapter, msg, "已停止当前任务，稍后处理这条新消息。")
+			gw.reply(ctx, binding.Adapter, msg, "已停止当前任务，稍后处理这条新消息。")
 			return
 		}
 	}
@@ -635,7 +635,7 @@ func (gw *BotGateway) handleMessage(ctx context.Context, binding AdapterBinding,
 		if cleanup != nil {
 			cleanup()
 		}
-		_ = gw.sendText(ctx, binding.Adapter, msg, "当前会话排队已满，请稍后再发，或使用 /queue interrupt 中断当前任务。")
+		gw.reply(ctx, binding.Adapter, msg, "当前会话排队已满，请稍后再发，或使用 /queue interrupt 中断当前任务。")
 		return
 	}
 	if result.Queued {
@@ -889,7 +889,7 @@ func (gw *BotGateway) requireCommandRole(ctx context.Context, adapter Adapter, m
 	if gw.checkCommandRole(msg.Platform, msg, role) {
 		return true
 	}
-	_ = gw.sendText(ctx, adapter, msg, "抱歉，你没有执行此 bot 命令的权限。")
+	gw.reply(ctx, adapter, msg, "抱歉，你没有执行此 bot 命令的权限。")
 	return false
 }
 
@@ -960,7 +960,7 @@ func (gw *BotGateway) offerPairing(ctx context.Context, adapter Adapter, msg Inb
 	}
 	text := fmt.Sprintf("%s\n配对码: %s\n请在本机运行: vcode bot pairing approve %s\n此码将在 %s 过期。",
 		prefix, req.Code, req.Code, req.ExpiresAt.Local().Format("2006-01-02 15:04"))
-	_ = gw.sendText(ctx, adapter, msg, text)
+	gw.reply(ctx, adapter, msg, text)
 	return true
 }
 
@@ -1098,7 +1098,7 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 			state.cancel()
 		}
 		gw.sessions.ForceRelease(key)
-		_ = gw.sendText(ctx, adapter, msg, "已停止当前任务。")
+		gw.reply(ctx, adapter, msg, "已停止当前任务。")
 
 	case strings.HasPrefix(msg.Text, "/new") || strings.HasPrefix(msg.Text, "/reset"):
 		gw.mu.Lock()
@@ -1114,7 +1114,7 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 			gw.rememberSessionReady(msg, state.ctrl)
 		}
 		gw.sessions.ForceRelease(key)
-		_ = gw.sendText(ctx, adapter, msg, "已开始新会话。")
+		gw.reply(ctx, adapter, msg, "已开始新会话。")
 
 	case strings.HasPrefix(msg.Text, "/approve"):
 		if !gw.requireCommandRole(ctx, adapter, msg, "approver") {
@@ -1123,7 +1123,7 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 		// 从消息中解析 approval ID
 		parts := strings.Fields(msg.Text)
 		if len(parts) < 2 {
-			_ = gw.sendText(ctx, adapter, msg, "用法: /approve <id>")
+			gw.reply(ctx, adapter, msg, "用法: /approve <id>")
 			return
 		}
 		gw.mu.Lock()
@@ -1132,9 +1132,9 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 		if ok && state.ctrl != nil {
 			state.ctrl.Approve(parts[1], true, false, false)
 			gw.forgetPendingApproval(key, parts[1])
-			_ = gw.sendText(ctx, adapter, msg, "已批准。")
+			gw.reply(ctx, adapter, msg, "已批准。")
 		} else {
-			_ = gw.sendText(ctx, adapter, msg, "没有找到当前会话中的待审批操作，请重新触发一次操作。")
+			gw.reply(ctx, adapter, msg, "没有找到当前会话中的待审批操作，请重新触发一次操作。")
 		}
 
 	case strings.HasPrefix(msg.Text, "/deny"):
@@ -1143,7 +1143,7 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 		}
 		parts := strings.Fields(msg.Text)
 		if len(parts) < 2 {
-			_ = gw.sendText(ctx, adapter, msg, "用法: /deny <id>")
+			gw.reply(ctx, adapter, msg, "用法: /deny <id>")
 			return
 		}
 		gw.mu.Lock()
@@ -1152,15 +1152,15 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 		if ok && state.ctrl != nil {
 			state.ctrl.Approve(parts[1], false, false, false)
 			gw.forgetPendingApproval(key, parts[1])
-			_ = gw.sendText(ctx, adapter, msg, "已拒绝。")
+			gw.reply(ctx, adapter, msg, "已拒绝。")
 		} else {
-			_ = gw.sendText(ctx, adapter, msg, "没有找到当前会话中的待审批操作，请重新触发一次操作。")
+			gw.reply(ctx, adapter, msg, "没有找到当前会话中的待审批操作，请重新触发一次操作。")
 		}
 
 	case strings.HasPrefix(msg.Text, "/answer"):
 		parts := strings.Fields(msg.Text)
 		if len(parts) < 3 {
-			_ = gw.sendText(ctx, adapter, msg, "用法: /answer <id> <选项或 q1=选项;q2=选项>")
+			gw.reply(ctx, adapter, msg, "用法: /answer <id> <选项或 q1=选项;q2=选项>")
 			return
 		}
 		askID := parts[1]
@@ -1181,12 +1181,12 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 		}
 		gw.mu.Unlock()
 		if !ok || state.ctrl == nil {
-			_ = gw.sendText(ctx, adapter, msg, "没有找到当前会话。")
+			gw.reply(ctx, adapter, msg, "没有找到当前会话。")
 			return
 		}
 		answers := parseAskAnswers(questions, rawAnswer)
 		state.ctrl.AnswerQuestion(askID, answers)
-		_ = gw.sendText(ctx, adapter, msg, "已提交回答。")
+		gw.reply(ctx, adapter, msg, "已提交回答。")
 
 	case strings.HasPrefix(msg.Text, "/yolo") || strings.HasPrefix(msg.Text, "/mode"):
 		if !gw.requireCommandRole(ctx, adapter, msg, "admin") {
@@ -1194,11 +1194,11 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 		}
 		mode, statusOnly, ok := parseToolApprovalModeCommand(msg.Text)
 		if !ok {
-			_ = gw.sendText(ctx, adapter, msg, "用法: /yolo on|off|auto|status，或 /mode yolo|ask|auto")
+			gw.reply(ctx, adapter, msg, "用法: /yolo on|off|auto|status，或 /mode yolo|ask|auto")
 			return
 		}
 		if statusOnly {
-			_ = gw.sendText(ctx, adapter, msg, gw.toolApprovalModeStatusText(key, msg))
+			gw.reply(ctx, adapter, msg, gw.toolApprovalModeStatusText(key, msg))
 			return
 		}
 		persistErr := gw.setToolApprovalModeForMessage(key, msg, mode)
@@ -1206,56 +1206,56 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 		if persistErr != nil {
 			text += "\n当前会话已生效，但保存到设置失败：" + persistErr.Error()
 		}
-		_ = gw.sendText(ctx, adapter, msg, text)
+		gw.reply(ctx, adapter, msg, text)
 
 	case strings.HasPrefix(msg.Text, "/queue"):
 		mode, clear, statusOnly, ok := parseQueueCommand(msg.Text)
 		if !ok {
-			_ = gw.sendText(ctx, adapter, msg, "用法: /queue steer|followup|collect|interrupt|status|default")
+			gw.reply(ctx, adapter, msg, "用法: /queue steer|followup|collect|interrupt|status|default")
 			return
 		}
 		if statusOnly {
-			_ = gw.sendText(ctx, adapter, msg, gw.queueStatusText(key, msg))
+			gw.reply(ctx, adapter, msg, gw.queueStatusText(key, msg))
 			return
 		}
 		if clear {
 			gw.sessions.ClearQueueMode(key)
-			_ = gw.sendText(ctx, adapter, msg, "已恢复默认队列模式："+queueModeLabel(gw.queueMode(key, msg))+"。")
+			gw.reply(ctx, adapter, msg, "已恢复默认队列模式："+queueModeLabel(gw.queueMode(key, msg))+"。")
 			return
 		}
 		gw.sessions.SetQueueMode(key, mode)
-		_ = gw.sendText(ctx, adapter, msg, "已切换队列模式："+queueModeLabel(mode)+"。")
+		gw.reply(ctx, adapter, msg, "已切换队列模式："+queueModeLabel(mode)+"。")
 
 	case slashCommandVerb(msg.Text) == "/projects":
 		if !gw.requireCommandRole(ctx, adapter, msg, "admin") {
 			return
 		}
 		query := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/projects"))
-		_ = gw.sendText(ctx, adapter, msg, formatBotProjects(gw.buildProjectIndex(), query, botProjectListLimit))
+		gw.reply(ctx, adapter, msg, formatBotProjects(gw.buildProjectIndex(), query, botProjectListLimit))
 
 	case slashCommandVerb(msg.Text) == "/use":
 		if !gw.requireCommandRole(ctx, adapter, msg, "admin") {
 			return
 		}
-		_ = gw.sendText(ctx, adapter, msg, gw.handleUseProjectCommand(key, msg.Text))
+		gw.reply(ctx, adapter, msg, gw.handleUseProjectCommand(key, msg.Text))
 
 	case slashCommandVerb(msg.Text) == "/sessions":
 		if !gw.requireCommandRole(ctx, adapter, msg, "admin") {
 			return
 		}
-		_ = gw.sendText(ctx, adapter, msg, gw.handleSessionsCommand(msg.Text))
+		gw.reply(ctx, adapter, msg, gw.handleSessionsCommand(msg.Text))
 
 	case slashCommandVerb(msg.Text) == "/attach":
 		if !gw.requireCommandRole(ctx, adapter, msg, "admin") {
 			return
 		}
-		_ = gw.sendText(ctx, adapter, msg, gw.handleAttachSessionCommand(key, msg.Text))
+		gw.reply(ctx, adapter, msg, gw.handleAttachSessionCommand(key, msg.Text))
 
 	case slashCommandVerb(msg.Text) == "/search":
 		if !gw.requireCommandRole(ctx, adapter, msg, "admin") {
 			return
 		}
-		_ = gw.sendText(ctx, adapter, msg, gw.handleProjectSearchCommand(ctx, msg.Text))
+		gw.reply(ctx, adapter, msg, gw.handleProjectSearchCommand(ctx, msg.Text))
 
 	case strings.HasPrefix(msg.Text, "/status"):
 		active := gw.sessions.ActiveCount()
@@ -1264,7 +1264,7 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 		sessions := len(gw.controllers)
 		gw.mu.Unlock()
 		mode := gw.currentToolApprovalMode(key, msg)
-		_ = gw.sendText(ctx, adapter, msg, fmt.Sprintf("活跃任务数: %d\n保留会话数: %d\n工具审批模式: %s\n队列模式: %s\n当前会话排队: %d\n连接健康: %s", active, sessions, toolApprovalModeLabel(mode), queueModeLabel(gw.queueMode(key, msg)), pending, gw.adapterHealthSummaryText()))
+		gw.reply(ctx, adapter, msg, fmt.Sprintf("活跃任务数: %d\n保留会话数: %d\n工具审批模式: %s\n队列模式: %s\n当前会话排队: %d\n连接健康: %s", active, sessions, toolApprovalModeLabel(mode), queueModeLabel(gw.queueMode(key, msg)), pending, gw.adapterHealthSummaryText()))
 
 	case strings.HasPrefix(msg.Text, "/help"):
 		help := "可用命令:\n" +
@@ -1284,7 +1284,7 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 			"/search all <关键词> - 跨已索引项目检索文件内容\n" +
 			"/status - 查看状态\n" +
 			"/help - 显示帮助"
-		_ = gw.sendText(ctx, adapter, msg, help)
+		gw.reply(ctx, adapter, msg, help)
 	}
 }
 
@@ -1656,7 +1656,7 @@ func (gw *BotGateway) runTurn(ctx context.Context, adapter Adapter, key string, 
 	// 获取或创建 Controller
 	state := gw.getOrCreateSession(ctx, key, msg)
 	if state == nil || state.ctrl == nil {
-		_ = gw.sendText(ctx, adapter, msg, "内部错误：无法创建会话。")
+		gw.reply(ctx, adapter, msg, "内部错误：无法创建会话。")
 		return
 	}
 	gw.rememberSessionReady(msg, state.ctrl)
@@ -1740,7 +1740,7 @@ func (gw *BotGateway) inputTextWithMedia(ctx context.Context, adapter Adapter, m
 	refs, errs := saveInboundMedia(ctx, workspaceRoot, msg.MediaURLs)
 	if len(errs) > 0 {
 		gw.logger.Warn("bot media attachment failed", "platform", msg.Platform, "chat", hashID(msg.ChatID), "errors", len(errs))
-		_ = gw.sendText(ctx, adapter, msg, fmt.Sprintf("有 %d 个附件保存失败；我会先处理可用内容。", len(errs)))
+		gw.reply(ctx, adapter, msg, fmt.Sprintf("有 %d 个附件保存失败；我会先处理可用内容。", len(errs)))
 	}
 	return appendMediaRefs(input, refs)
 }
@@ -2134,6 +2134,15 @@ func normalizeOptionalBotToolApprovalMode(mode string) string {
 		return control.ToolApprovalYolo
 	default:
 		return ""
+	}
+}
+
+// reply sends text back to the sender and logs the failure (sendText already
+// warns on error); the IM reply must not be silently dropped, but the turn
+// itself should not fail because a notification could not be delivered.
+func (gw *BotGateway) reply(ctx context.Context, adapter Adapter, msg InboundMessage, text string) {
+	if err := gw.sendText(ctx, adapter, msg, text); err != nil {
+		gw.logger.Debug("bot reply failed", "platform", msg.Platform, "chat_type", msg.ChatType, "chat", hashID(msg.ChatID), "err", err)
 	}
 }
 
