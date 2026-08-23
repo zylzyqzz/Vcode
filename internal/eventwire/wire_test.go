@@ -96,7 +96,6 @@ func TestToWireMessageMemoryCitations(t *testing.T) {
 	}
 }
 
-
 func TestToWireToolPayloadJSON(t *testing.T) {
 	w := ToWire(event.Event{Kind: event.ToolDispatch, Tool: event.Tool{
 		ID: "call-1", Name: "task", Args: `{"prompt":"x"}`, Output: "ignored",
